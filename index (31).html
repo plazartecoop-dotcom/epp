@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Entrega de EPP — Cooperativa Agropecuaria de Tandil</title>
+
+<!-- Firebase (mismo proyecto que Horas Extras / Planilla de Viajes) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
+:root{
+  --bg:#101a23; --panel:#17232e; --panel-2:#1e2c38; --line:#2b3b48; --text:#e9eef1; --muted:#8fa5b3;
+  --acc:#e8a33d; --acc-dim:#4a3a1e; --green:#4fae8c; --green-dim:#17352c; --red:#d9634f; --red-dim:#3a1f1c; --blue:#5b8dbf;
+}
+body[data-planta="aceitera"]{
+  --bg:#0f1a12; --panel:#16241a; --panel-2:#1c2f21; --line:#2a3f2c; --text:#e9f1ea; --muted:#8fae8f;
+  --acc:#8fc23c; --acc-dim:#22331a;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;transition:background .3s}
+.wrap{max-width:980px;margin:0 auto;padding:22px 16px 90px}
+h1,h2,h3{margin:0}
+.mono{font-family:'JetBrains Mono',monospace}
+.brand{text-align:center;margin-bottom:18px}
+.brand .sub{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1.4px}
+.brand .title{font-size:22px;font-weight:700;margin-top:4px}
+.brand .pl{font-size:13px;color:var(--acc);margin-top:4px;font-family:'JetBrains Mono',monospace}
+.switch{display:flex;gap:8px;justify-content:center;margin-bottom:16px}
+.switch button{flex:0 1 200px;padding:12px;border-radius:10px;font-size:15px;font-weight:600}
+.switch button.on{background:var(--acc);color:#14202b;border-color:var(--acc)}
+.tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:18px;padding-bottom:4px}
+.tabs button{white-space:nowrap;flex:none}
+.tabs button.on{background:var(--acc-dim);color:var(--acc);border-color:var(--acc)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:14px}
+.card h3{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px;font-weight:600}
+label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
+input,select,textarea{width:100%;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:9px 10px;border-radius:7px;font-size:14px;font-family:inherit}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc)}
+button{background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px 14px;font-size:14px;font-family:inherit;cursor:pointer}
+button:hover{border-color:var(--acc)}
+button.primary{background:var(--acc);color:#14202b;border-color:var(--acc);font-weight:600}
+button.danger{color:var(--red);border-color:var(--red-dim)}
+button.sm{padding:5px 10px;font-size:12px}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row>*{flex:1;min-width:140px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.kpi .l{font-size:12px;color:var(--muted)}
+.kpi .v{font-size:26px;font-weight:700;font-family:'JetBrains Mono',monospace;margin-top:4px}
+.kpi .v.acc{color:var(--acc)}
+.elems{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.elem{background:var(--panel-2);border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px}
+.elem .em{font-size:24px}
+.elem .n{font-size:20px;font-weight:700;font-family:'JetBrains Mono',monospace}
+.elem .t{font-size:12px;color:var(--muted)}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:14px}
+.li:first-of-type{border-top:none}
+.li .s{color:var(--muted);font-size:12px}
+.badge{font-size:11px;padding:3px 9px;border-radius:20px;white-space:nowrap;font-weight:500}
+.b-warn{background:var(--acc-dim);color:var(--acc)}
+.b-red{background:var(--red-dim);color:var(--red)}
+.b-ok{background:var(--green-dim);color:var(--green)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border-radius:22px;border:1px solid var(--line);background:var(--panel-2);font-size:14px;cursor:pointer;user-select:none}
+.chip:hover{border-color:var(--acc)}
+.chip.on{background:var(--acc-dim);border-color:var(--acc);color:var(--acc)}
+.chip.otro{border-style:dashed;color:var(--muted)}
+.chip .q{background:var(--acc);color:#14202b;border-radius:10px;padding:0 7px;font-size:12px;font-weight:700}
+.sec-t{font-size:12px;color:var(--muted);margin:12px 0 6px;display:flex;align-items:center;gap:6px}
+.av{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex:none}
+.av.big{width:58px;height:58px;font-size:20px}
+.op{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:10px;cursor:pointer;border:1px solid transparent}
+.op:hover{background:var(--panel-2);border-color:var(--line)}
+.op .nm{font-weight:600;font-size:15px}
+.op .s{font-size:12px;color:var(--muted)}
+.op .r{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.sel-items .it{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+.sel-items .it:first-child{border-top:none}
+.step{display:flex;align-items:center;gap:6px;margin-left:auto}
+.step button{width:34px;height:34px;padding:0;font-size:18px}
+.step span{min-width:26px;text-align:center;font-family:'JetBrains Mono',monospace;font-weight:600}
+.pad-wrap{background:#f4f1e8;border-radius:10px;position:relative;height:190px;touch-action:none}
+.pad-wrap canvas{width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+.pad-wrap .hint{position:absolute;bottom:34px;left:20px;right:20px;border-bottom:1px dashed #b8b2a0;pointer-events:none}
+.pad-wrap .hint span{position:absolute;left:0;bottom:6px;color:#a39d8a;font-size:12px}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;color:var(--muted);font-weight:500;padding:8px 6px;border-bottom:1px solid var(--line);font-size:12px;white-space:nowrap}
+.tbl td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tbl td.num,.tbl th.num{text-align:right;font-family:'JetBrains Mono',monospace}
+.tscroll{overflow-x:auto}
+.firma-img{height:34px;background:#f4f1e8;border-radius:5px;padding:2px 6px;display:block}
+.hojas{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.hojas button.on{background:var(--acc-dim);color:var(--acc);border-color:var(--acc)}
+.bar{height:22px;background:var(--panel-2);border-radius:6px;overflow:hidden;flex:1}
+.bar i{display:block;height:100%;background:var(--acc);border-radius:6px}
+.empty{text-align:center;color:var(--muted);padding:26px 10px;font-size:14px}
+.empty .em{font-size:34px;display:block;margin-bottom:6px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(120px);background:var(--green);color:#0f1a12;padding:12px 20px;border-radius:10px;font-weight:600;transition:transform .3s;z-index:60;max-width:90%}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.toast.err{background:var(--red);color:#fff}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+.modal.show{display:flex}
+.modal .card{width:100%;max-width:560px;margin:0}
+.hide{display:none!important}
+.back{margin-bottom:12px}
+.muted{color:var(--muted)}
+.small{font-size:12px}
+.sub-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.sub-tabs button.on{background:var(--acc-dim);color:var(--acc);border-color:var(--acc)}
+@media (max-width:560px){.kpi .v{font-size:22px}.switch button{font-size:14px;padding:10px}}
+</style>
+</head>
+<body data-planta="balanceados">
+<div class="wrap">
+  <div class="brand">
+    <div class="sub">Cooperativa Agropecuaria de Tandil</div>
+    <div class="title">Entrega de elementos de protección personal</div>
+    <div class="pl" id="pl-nombre"></div>
+  </div>
+  <div class="switch">
+    <button data-p="balanceados" onclick="setPlanta('balanceados')">🏭 Balanceados</button>
+    <button data-p="aceitera" onclick="setPlanta('aceitera')">🌻 Aceitera</button>
+  </div>
+  <nav class="tabs">
+    <button data-t="tablero" onclick="setTab('tablero')">📊 Tablero</button>
+    <button data-t="nueva" onclick="setTab('nueva')">➕ Nueva entrega</button>
+    <button data-t="operarios" onclick="setTab('operarios')">👷 Operarios</button>
+    <button data-t="estad" onclick="setTab('estad')">📈 Estadísticas</button>
+    <button data-t="config" onclick="setTab('config')">⚙️ Configuración</button>
+  </nav>
+
+  <!-- TABLERO -->
+  <section id="v-tablero"></section>
+
+  <!-- NUEVA ENTREGA -->
+  <section id="v-nueva" class="hide">
+    <div class="card">
+      <h3>Fecha</h3>
+      <input type="date" id="ne-fecha" style="max-width:220px">
+    </div>
+    <div class="card">
+      <h3>Operario</h3>
+      <div id="ne-op-sel"></div>
+      <div id="ne-op-lista">
+        <input id="ne-buscar" placeholder="Buscar por nombre" oninput="renderNeOperarios()">
+        <div id="ne-ops"></div>
+        <div id="ne-otro-op" class="hide" style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+          <div class="row">
+            <div><label>Apellido y nombre</label><input id="ne-otro-nombre"></div>
+            <div><label>Puesto / sector</label><input id="ne-otro-sector" list="dl-sectores"></div>
+          </div>
+          <label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:13px;color:var(--text)"><input type="checkbox" id="ne-otro-guardar" checked style="width:auto"> Agregar a la lista de la planta</label>
+          <div style="margin-top:10px;display:flex;gap:8px"><button class="primary" onclick="agregarOtroOperario()">Usar este operario</button><button onclick="toggleOtroOp(false)">Cancelar</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Elementos entregados</h3>
+      <div class="sel-items" id="ne-items"></div>
+      <div class="chips" id="ne-cat" style="margin-top:10px"></div>
+      <div id="ne-otro-el" class="hide" style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+        <div class="row">
+          <div><label>Producto</label><input id="oe-prod"></div>
+          <div><label>Tipo / modelo</label><input id="oe-tipo"></div>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <div><label>Marca</label><input id="oe-marca"></div>
+          <div><label>¿Posee certificación?</label><select id="oe-cert"><option value="si">Sí</option><option value="no">No</option></select></div>
+        </div>
+        <label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:13px;color:var(--text)"><input type="checkbox" id="oe-guardar" checked style="width:auto"> Agregar al listado de EPP</label>
+        <div style="margin-top:10px;display:flex;gap:8px"><button class="primary" onclick="agregarOtroElemento()">Agregar</button><button onclick="toggleOtroEl(false)">Cancelar</button></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Datos opcionales</h3>
+      <div class="row">
+        <div><label>Retira otra persona (nombre)</label><input id="ne-retira" placeholder="Dejar vacío si retira el mismo operario"></div>
+        <div><label>Observación</label><input id="ne-obs"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Firma del trabajador</h3>
+      <div class="pad-wrap"><canvas id="ne-pad"></canvas><div class="hint"><span>Firmar aquí con el dedo</span></div></div>
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:space-between;flex-wrap:wrap">
+        <button onclick="padNE.limpiar()">Borrar firma</button>
+        <button class="primary" id="ne-guardar" onclick="guardarEntrega()">✔ Guardar entrega</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- OPERARIOS -->
+  <section id="v-operarios" class="hide"></section>
+  <section id="v-ficha" class="hide"></section>
+
+  <!-- ESTADÍSTICAS -->
+  <section id="v-estad" class="hide"></section>
+
+  <!-- CONFIGURACIÓN -->
+  <section id="v-config" class="hide"></section>
+</div>
+
+<datalist id="dl-sectores"></datalist>
+
+<!-- Modal de firma pendiente -->
+<div class="modal" id="m-firma">
+  <div class="card">
+    <h3 id="mf-titulo">Firmar entrega</h3>
+    <div id="mf-detalle" class="small muted" style="margin-bottom:10px"></div>
+    <div class="pad-wrap"><canvas id="mf-pad"></canvas><div class="hint"><span>Firmar aquí con el dedo</span></div></div>
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:space-between">
+      <button onclick="padMF.limpiar()">Borrar</button>
+      <div style="display:flex;gap:8px"><button onclick="cerrarModalFirma()">Cancelar</button><button class="primary" onclick="guardarFirmaPendiente()">Guardar firma</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================
+   CONFIGURACIÓN
+   ========================================================= */
+firebase.initializeApp({ databaseURL: "https://planilla-viajes-2026-default-rtdb.firebaseio.com" });
+const db = firebase.database();
+const R = "epp"; // rama propia de esta app
+
+const PLANTAS = {
+  balanceados: { nombre: "Fábrica de Alimentos Balanceados", corto: "Balanceados", he: "horasExtras" },
+  aceitera:    { nombre: "Aceitera Coopagro",                corto: "Aceitera",    he: "horasExtrasCoopagro" }
+};
+const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+const MESES_L = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+const FILAS_POR_HOJA = 9;
+const CAT_INICIAL = [
+  ["Pantalón","grafa","Ombu","si","👖"],
+  ["Remera","algodón","Genérica","no","👕"],
+  ["Buzo","algodón","Klarge","no","🧥"],
+  ["Botín / zapatilla","seguridad","ATT","si","🥾"],
+  ["Barbijo","N95","3M","si","😷"],
+  ["Guantes","moteados","Genéricos","no","🧤"],
+  ["Faja","lumbar / chaleco","Ombu","si","🦺"],
+  ["Protector auditivo","A300 / descartables","Libus","si","🎧"]
+];
+const CHART_COLORS = ["#e8a33d","#5b8dbf","#4fae8c","#d9634f","#a98bd6","#8fc23c","#d6b25b","#5fb8c2","#c97fa6","#9aa7b1"];
+const AV_COLORS = [["#4a3a1e","#e8a33d"],["#1d3550","#7fb0e0"],["#17352c","#6fcca9"],["#3a1f1c","#e98a77"],["#33284a","#b9a2e6"],["#22331a","#a6d45a"]];
+
+/* =========================================================
+   ESTADO
+   ========================================================= */
+const D = {};
+Object.keys(PLANTAS).forEach(p => D[p] = { he:{}, extras:{}, fichas:{}, entregas:{} });
+let CATALOGO = {}, CONFIG = null;
+let PLANTA = "balanceados";
+try { PLANTA = localStorage.getItem("epp_planta") || "balanceados"; } catch(e){}
+if (!PLANTAS[PLANTA]) PLANTA = "balanceados";
+let TAB = "tablero";
+let FICHA = null, FICHA_HOJA = null;
+let NE = { persona:null, items:{} };
+let ESTAD_MODO = "mes", ESTAD_ANIO = new Date().getFullYear(), TB_ANIO = new Date().getFullYear(), TB_MES = "todo";
+let VER_INACTIVOS = false;
+const FIRMAS = {};      // cache entregaId -> dataURL
+const CHARTS = {};
+let firmaPendienteId = null;
+
+/* =========================================================
+   UTILIDADES
+   ========================================================= */
+const $ = id => document.getElementById(id);
+function esc(s){ return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function hoy(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function fFecha(iso){ if(!iso) return ""; const [y,m,d]=iso.split("-"); return `${d}/${m}/${y}`; }
+function fCorta(iso){ if(!iso) return ""; const [y,m,d]=iso.split("-"); return `${d}-${MESES[+m-1].toLowerCase()}`; }
+function iniciales(n){ const p=String(n||"?").trim().split(/[\s,]+/).filter(Boolean); return ((p[0]||"?")[0]+((p[1]||"")[0]||"")).toUpperCase(); }
+function hash(s){ let h=0; for(const c of String(s)) h=(h*31+c.charCodeAt(0))|0; return Math.abs(h); }
+function avatar(n, big){ const c=AV_COLORS[hash(n)%AV_COLORS.length]; return `<div class="av ${big?'big':''}" style="background:${c[0]};color:${c[1]}">${esc(iniciales(n))}</div>`; }
+function toast(msg, err){ const t=$("toast"); t.textContent=msg; t.className="toast show"+(err?" err":""); clearTimeout(t._h); t._h=setTimeout(()=>t.className="toast",2600); }
+function emojiDe(prod){ const c=Object.values(CATALOGO).find(x=>x.producto===prod); return (c&&c.emoji)||"📦"; }
+function catOrden(soloActivos){ return Object.entries(CATALOGO).filter(([,c])=>!soloActivos||c.activo!==false).sort((a,b)=>(a[1].orden??99)-(b[1].orden??99)||a[1].producto.localeCompare(b[1].producto)); }
+function n(x){ return Number(x)||0; }
+
+/* =========================================================
+   FIREBASE: LECTURA
+   ========================================================= */
+let pend = null;
+function refrescar(){ clearTimeout(pend); pend = setTimeout(renderActual, 60); }
+
+Object.keys(PLANTAS).forEach(p => {
+  db.ref(PLANTAS[p].he + "/personal").on("value", s => { D[p].he = s.val()||{}; refrescar(); });
+  db.ref(`${R}/extras/${p}`).on("value", s => { D[p].extras = s.val()||{}; refrescar(); });
+  db.ref(`${R}/fichas/${p}`).on("value", s => { D[p].fichas = s.val()||{}; refrescar(); });
+  db.ref(`${R}/entregas/${p}`).on("value", s => {
+    const v = s.val()||{}; Object.keys(v).forEach(k => { v[k].id = k; v[k].items = v[k].items ? Object.values(v[k].items) : []; });
+    D[p].entregas = v; refrescar();
+  });
+});
+db.ref(R + "/catalogo").on("value", s => {
+  if (!s.exists()) { sembrarCatalogo(); return; }
+  CATALOGO = s.val(); refrescar();
+});
+db.ref(R + "/config").on("value", s => {
+  if (!s.exists()) { sembrarConfig(); return; }
+  CONFIG = s.val(); refrescar();
+});
+
+function sembrarCatalogo(){
+  const obj = {};
+  CAT_INICIAL.forEach((c,i) => { obj[db.ref(R+"/catalogo").push().key] = { producto:c[0], tipo:c[1], marca:c[2], cert:c[3], emoji:c[4], orden:i, activo:true }; });
+  db.ref(R+"/catalogo").set(obj);
+}
+function sembrarConfig(){
+  db.ref(R+"/config").set({ razonSocial:"Cooperativa Agropecuaria de Tandil Ltda.", cuit:"30-50836064-5", domicilio:"", localidad:"Tandil", cp:"7000", provincia:"Buenos Aires" });
+  db.ref(`${R}/extras/balanceados`).push({ apellidoNombre:"PABLO", sector:"Jefe de Producción" });
+}
+
+/* =========================================================
+   DATOS DERIVADOS
+   ========================================================= */
+function personas(p){
+  const out = {};
+  Object.entries(D[p].he).forEach(([id,o]) => { const k="h_"+id; out[k] = { key:k, nombre:o.apellidoNombre||"", sector:o.sector||"", codigo:o.codigo||"", origen:"he" }; });
+  Object.entries(D[p].extras).forEach(([id,o]) => { const k="x_"+id; out[k] = { key:k, nombre:o.apellidoNombre||"", sector:o.sector||"", origen:"epp" }; });
+  Object.values(D[p].entregas).forEach(e => { if (e.persona && !out[e.persona]) out[e.persona] = { key:e.persona, nombre:e.nombre, sector:e.sector, origen:"baja", inactivo:true }; });
+  Object.values(out).forEach(o => {
+    const f = D[p].fichas[o.key] || {};
+    o.dni = f.dni || ""; o.puesto = f.puesto || o.sector; o.necesarios = f.necesarios || ""; o.info = f.info || "";
+    if (f.inactivo) o.inactivo = true;
+  });
+  return out;
+}
+function entregasOrden(p){ return Object.values(D[p].entregas).sort((a,b)=>a.fecha.localeCompare(b.fecha)||a.ts-b.ts); }
+function entregasDe(p,key){ return entregasOrden(p).filter(e=>e.persona===key); }
+function filasDe(p,key){ const r=[]; entregasDe(p,key).forEach(e=>e.items.forEach(it=>r.push({e,it}))); return r; }
+function anios(p){ const s=new Set([new Date().getFullYear()]); Object.values(D[p].entregas).forEach(e=>s.add(+e.fecha.slice(0,4))); return [...s].sort((a,b)=>b-a); }
+function enPeriodo(e, anio, mes){ if (+e.fecha.slice(0,4)!==+anio) return false; return mes==="todo" || +e.fecha.slice(5,7)===+mes; }
+function sectoresPlanta(p){ const s=new Set(); Object.values(personas(p)).forEach(o=>o.sector&&s.add(o.sector)); return [...s].sort(); }
+
+function alertas(p){
+  const out=[], lim=Date.now()-60*864e5, acc={};
+  Object.values(D[p].entregas).forEach(e => {
+    if (new Date(e.fecha+"T12:00").getTime() < lim) return;
+    e.items.forEach(it => { const k=e.persona+"|"+it.producto; acc[k]=acc[k]||{n:0,nombre:e.nombre,prod:it.producto,persona:e.persona}; acc[k].n+=n(it.cantidad); });
+  });
+  Object.values(acc).filter(a=>a.n>=3).forEach(a=>out.push({cls:"b-warn",txt:`${emojiDe(a.prod)} ${a.nombre} · ${a.prod}`,badge:`${a.n} en 60 días`,persona:a.persona}));
+  const sf={}; Object.values(D[p].entregas).filter(e=>!e.firmada).forEach(e=>{ sf[e.persona]=sf[e.persona]||{n:0,nombre:e.nombre}; sf[e.persona].n++; });
+  Object.entries(sf).forEach(([k,v])=>out.push({cls:"b-red",txt:`✍️ ${v.nombre}`,badge:v.n===1?"1 sin firma":`${v.n} sin firma`,persona:k}));
+  const per=personas(p); const sinDni=Object.values(per).filter(o=>!o.dni && Object.values(D[p].entregas).some(e=>e.persona===o.key));
+  sinDni.forEach(o=>out.push({cls:"b-warn",txt:`🪪 ${o.nombre}`,badge:"falta DNI",persona:o.key}));
+  return out;
+}
+
+/* =========================================================
+   NAVEGACIÓN
+   ========================================================= */
+function setPlanta(p){
+  PLANTA = p; try{ localStorage.setItem("epp_planta",p); }catch(e){}
+  NE = { persona:null, items:{} }; FICHA = null;
+  if (TAB==="ficha") TAB="operarios";
+  renderActual();
+}
+function setTab(t){ TAB = t; FICHA = null; renderActual(); window.scrollTo(0,0); }
+function abrirFicha(key){ FICHA = key; FICHA_HOJA = null; TAB = "ficha"; renderActual(); window.scrollTo(0,0); }
+
+function renderActual(){
+  document.body.dataset.planta = PLANTA;
+  $("pl-nombre").textContent = PLANTAS[PLANTA].nombre;
+  document.querySelectorAll(".switch button").forEach(b=>b.classList.toggle("on",b.dataset.p===PLANTA));
+  document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===TAB || (TAB==="ficha"&&b.dataset.t==="operarios")));
+  ["tablero","nueva","operarios","ficha","estad","config"].forEach(v=>$("v-"+v).classList.toggle("hide",v!==TAB));
+  $("dl-sectores").innerHTML = sectoresPlanta(PLANTA).map(s=>`<option value="${esc(s)}">`).join("");
+  if (!CONFIG || !Object.keys(CATALOGO).length) return;
+  if (TAB==="tablero") renderTablero();
+  if (TAB==="nueva") renderNueva();
+  if (TAB==="operarios") renderOperarios();
+  if (TAB==="ficha") renderFicha();
+  if (TAB==="estad") renderEstad();
+  if (TAB==="config") renderConfig();
+}
+
+/* =========================================================
+   TABLERO
+   ========================================================= */
+function renderTablero(){
+  const p = PLANTA, ent = Object.values(D[p].entregas).filter(e=>enPeriodo(e,TB_ANIO,TB_MES));
+  let unidades=0, sinFirma=0; const porProd={}, ops=new Set();
+  ent.forEach(e=>{ ops.add(e.persona); if(!e.firmada) sinFirma++; e.items.forEach(it=>{ unidades+=n(it.cantidad); porProd[it.producto]=(porProd[it.producto]||0)+n(it.cantidad); }); });
+  const per = TB_MES==="todo" ? `en ${TB_ANIO}` : `en ${MESES_L[TB_MES-1].toLowerCase()} ${TB_ANIO}`;
+  const elems = Object.entries(porProd).sort((a,b)=>b[1]-a[1]);
+  const al = alertas(p);
+  const ult = entregasOrden(p).slice(-8).reverse();
+  $("v-tablero").innerHTML = `
+    <div class="row" style="margin-bottom:14px;max-width:420px">
+      <select onchange="TB_ANIO=+this.value;renderTablero()">${anios(p).map(a=>`<option ${a==TB_ANIO?"selected":""}>${a}</option>`).join("")}</select>
+      <select onchange="TB_MES=this.value;renderTablero()"><option value="todo">Todo el año</option>${MESES_L.map((m,i)=>`<option value="${i+1}" ${TB_MES==i+1?"selected":""}>${m}</option>`).join("")}</select>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="l">Unidades entregadas</div><div class="v acc">${unidades}</div></div>
+      <div class="kpi"><div class="l">Entregas</div><div class="v">${ent.length}</div></div>
+      <div class="kpi"><div class="l">Operarios atendidos</div><div class="v">${ops.size}</div></div>
+      <div class="kpi"><div class="l">Sin firmar</div><div class="v" style="color:${sinFirma?"var(--red)":"var(--green)"}">${sinFirma}</div></div>
+    </div>
+    <div class="card"><h3>Elementos entregados ${per}</h3>
+      ${elems.length ? `<div class="elems">${elems.map(([pr,q])=>`<div class="elem"><span class="em">${emojiDe(pr)}</span><div><div class="n">${q}</div><div class="t">${esc(pr)}</div></div></div>`).join("")}</div>`
+      : `<div class="empty"><span class="em">🧤</span>Todavía no hay entregas ${per}.<br><button class="primary" style="margin-top:10px" onclick="setTab('nueva')">Cargar la primera</button></div>`}
+    </div>
+    <div class="card"><h3>Mes a mes · ${TB_ANIO}</h3><div style="position:relative;height:250px"><canvas id="ch-tb"></canvas></div></div>
+    <div class="two">
+      <div class="card"><h3>Para revisar</h3>
+        ${al.length ? al.map(a=>`<div class="li" style="cursor:pointer" onclick="abrirFicha('${a.persona}')"><span>${esc(a.txt)}</span><span class="badge ${a.cls}">${a.badge}</span></div>`).join("") : `<div class="empty"><span class="em">✅</span>Todo en orden.</div>`}
+      </div>
+      <div class="card"><h3>Últimas entregas</h3>
+        ${ult.length ? ult.map(e=>`<div class="li" style="cursor:pointer" onclick="abrirFicha('${e.persona}')"><span><span class="mono small muted">${fCorta(e.fecha)}</span> &nbsp;${esc(e.nombre)}</span><span>${e.items.map(it=>emojiDe(it.producto)+(n(it.cantidad)>1?"×"+it.cantidad:"")).join(" ")}</span></div>`).join("") : `<div class="empty">Sin entregas cargadas.</div>`}
+      </div>
+    </div>`;
+  graficoMensual("ch-tb", p, TB_ANIO);
+}
+
+function graficoMensual(id, p, anio){
+  const prods = {};
+  Object.values(D[p].entregas).filter(e=>+e.fecha.slice(0,4)===+anio).forEach(e=>e.items.forEach(it=>{
+    prods[it.producto]=prods[it.producto]||Array(12).fill(0); prods[it.producto][+e.fecha.slice(5,7)-1]+=n(it.cantidad);
+  }));
+  const ds = Object.entries(prods).map(([pr,v],i)=>({label:pr,data:v,backgroundColor:CHART_COLORS[i%CHART_COLORS.length],borderRadius:3}));
+  dibujar(id,{type:"bar",data:{labels:MESES,datasets:ds},options:opcionesChart(true)});
+}
+function opcionesChart(stacked){
+  const c = getComputedStyle(document.body), m = c.getPropertyValue("--muted").trim(), l = c.getPropertyValue("--line").trim();
+  return { responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{ position:"bottom", labels:{ color:m, boxWidth:10, font:{family:"Inter",size:11} } } },
+    scales:{ x:{ stacked, grid:{display:false}, ticks:{color:m,font:{family:"Inter",size:11}} },
+             y:{ stacked, beginAtZero:true, grid:{color:l}, ticks:{color:m,precision:0,font:{family:"JetBrains Mono",size:11}} } } };
+}
+function dibujar(id, cfg){ if (CHARTS[id]) CHARTS[id].destroy(); const el=$(id); if(!el) return; CHARTS[id] = new Chart(el, cfg); }
+
+/* =========================================================
+   NUEVA ENTREGA
+   ========================================================= */
+function Pad(cv){
+  const ctx = cv.getContext("2d"); let dibujando=false, ult=null, ancho=0;
+  this.vacio = true;
+  this.ajustar = () => {
+    const r = cv.getBoundingClientRect(); if (!r.width || r.width===ancho) return;
+    ancho = r.width; const dpr = window.devicePixelRatio||1;
+    cv.width = r.width*dpr; cv.height = r.height*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.lineWidth=2.4; ctx.lineCap="round"; ctx.lineJoin="round"; ctx.strokeStyle="#14202b"; ctx.fillStyle="#14202b"; this.vacio=true;
+  };
+  const pos = e => { const r=cv.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; };
+  cv.addEventListener("pointerdown", e => { dibujando=true; ult=pos(e); cv.setPointerCapture(e.pointerId); ctx.beginPath(); ctx.arc(ult.x,ult.y,1.2,0,7); ctx.fill(); this.vacio=false; e.preventDefault(); });
+  cv.addEventListener("pointermove", e => { if(!dibujando) return; const q=pos(e); ctx.beginPath(); ctx.moveTo(ult.x,ult.y); ctx.lineTo(q.x,q.y); ctx.stroke(); ult=q; e.preventDefault(); });
+  ["pointerup","pointercancel"].forEach(t=>cv.addEventListener(t,()=>dibujando=false));
+  this.limpiar = () => { ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv.width,cv.height); ctx.restore(); this.vacio=true; };
+  this.png = () => { const o=document.createElement("canvas"); o.width=600; o.height=Math.round(600*cv.height/cv.width); o.getContext("2d").drawImage(cv,0,0,o.width,o.height); return o.toDataURL("image/png"); };
+}
+const padNE = new Pad($("ne-pad"));
+const padMF = new Pad($("mf-pad"));
+window.addEventListener("resize", ()=>{ if(TAB==="nueva") padNE.ajustar(); });
+
+function renderNueva(){
+  if (!$("ne-fecha").value) $("ne-fecha").value = hoy();
+  renderNeOperarios(); renderNeItems();
+  requestAnimationFrame(()=>padNE.ajustar());
+}
+function renderNeOperarios(){
+  const per = personas(PLANTA);
+  if (NE.persona && per[NE.persona]){
+    const o = per[NE.persona];
+    $("ne-op-sel").innerHTML = `<div class="op" style="background:var(--panel-2);border-color:var(--acc)">${avatar(o.nombre)}<div><div class="nm">${esc(o.nombre)}</div><div class="s">${esc(o.puesto)}</div></div><div class="r"><button class="sm" onclick="NE.persona=null;renderNeOperarios()">Cambiar</button></div></div>`;
+    $("ne-op-lista").classList.add("hide"); return;
+  }
+  $("ne-op-sel").innerHTML = ""; $("ne-op-lista").classList.remove("hide");
+  const q = ($("ne-buscar").value||"").toLowerCase();
+  const lista = Object.values(per).filter(o=>!o.inactivo && o.nombre.toLowerCase().includes(q));
+  const grupos = {}; lista.forEach(o=>(grupos[o.puesto||"Sin sector"]=grupos[o.puesto||"Sin sector"]||[]).push(o));
+  $("ne-ops").innerHTML = Object.keys(grupos).sort().map(g=>`<div class="sec-t">${esc(g)}</div><div class="chips">${grupos[g].sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(o=>`<span class="chip" onclick="NE.persona='${o.key}';renderNeOperarios()">${esc(o.nombre)}</span>`).join("")}</div>`).join("")
+    + `<div class="chips" style="margin-top:12px"><span class="chip otro" onclick="toggleOtroOp(true)">＋ Otro operario</span></div>`
+    + (lista.length?"":`<div class="empty small">No hay operarios que coincidan.</div>`);
+}
+function toggleOtroOp(v){ $("ne-otro-op").classList.toggle("hide",!v); if(v) $("ne-otro-nombre").focus(); }
+async function agregarOtroOperario(){
+  const nombre = $("ne-otro-nombre").value.trim().toUpperCase(), sector = $("ne-otro-sector").value.trim();
+  if (!nombre) return toast("Escribí el apellido y nombre", true);
+  const ref = db.ref(`${R}/extras/${PLANTA}`).push();
+  await ref.set({ apellidoNombre:nombre, sector:sector||"Sin sector" });
+  if (!$("ne-otro-guardar").checked) await db.ref(`${R}/fichas/${PLANTA}/x_${ref.key}/inactivo`).set(true);
+  NE.persona = "x_"+ref.key; $("ne-otro-nombre").value=""; $("ne-otro-sector").value=""; toggleOtroOp(false); renderNeOperarios();
+}
+function renderNeItems(){
+  const ids = Object.keys(NE.items).filter(k=>NE.items[k]>0 && CATALOGO[k]);
+  $("ne-items").innerHTML = ids.length ? ids.map(k=>{ const c=CATALOGO[k]; return `<div class="it"><span style="font-size:22px">${c.emoji||"📦"}</span><div><div style="font-weight:600">${esc(c.producto)}</div><div class="small muted">${esc(c.tipo)} · ${esc(c.marca)} · ${c.cert==="si"?"certificado":"sin certificación"}</div></div><div class="step"><button onclick="cantItem('${k}',-1)">−</button><span>${NE.items[k]}</span><button onclick="cantItem('${k}',1)">+</button></div></div>`; }).join("")
+    : `<div class="small muted">Tocá los elementos que se entregan.</div>`;
+  $("ne-cat").innerHTML = catOrden(true).map(([k,c])=>`<span class="chip ${NE.items[k]?"on":""}" onclick="cantItem('${k}',1)">${c.emoji||"📦"} ${esc(c.producto)}${NE.items[k]?` <span class="q">${NE.items[k]}</span>`:""}</span>`).join("")
+    + `<span class="chip otro" onclick="toggleOtroEl(true)">＋ Otro elemento</span>`;
+}
+function cantItem(k,d){ NE.items[k]=Math.max(0,(NE.items[k]||0)+d); if(!NE.items[k]) delete NE.items[k]; renderNeItems(); }
+function toggleOtroEl(v){ $("ne-otro-el").classList.toggle("hide",!v); if(v) $("oe-prod").focus(); }
+async function agregarOtroElemento(){
+  const prod = $("oe-prod").value.trim(); if (!prod) return toast("Escribí el producto", true);
+  const ref = db.ref(R+"/catalogo").push();
+  await ref.set({ producto:prod, tipo:$("oe-tipo").value.trim(), marca:$("oe-marca").value.trim(), cert:$("oe-cert").value, emoji:"📦", orden:99, activo:$("oe-guardar").checked });
+  NE.items[ref.key]=1; ["oe-prod","oe-tipo","oe-marca"].forEach(i=>$(i).value=""); toggleOtroEl(false); renderNeItems();
+}
+async function guardarEntrega(){
+  const per = personas(PLANTA)[NE.persona];
+  if (!per) return toast("Elegí el operario", true);
+  const ids = Object.keys(NE.items).filter(k=>NE.items[k]>0 && CATALOGO[k]);
+  if (!ids.length) return toast("Agregá al menos un elemento", true);
+  const sinFirma = padNE.vacio;
+  if (sinFirma && !confirm("La entrega no tiene firma. ¿Guardarla igual y firmarla después?")) return;
+  $("ne-guardar").disabled = true;
+  try {
+    const ref = db.ref(`${R}/entregas/${PLANTA}`).push();
+    if (!sinFirma) await db.ref(`${R}/firmas/${PLANTA}/${ref.key}`).set(padNE.png());
+    await ref.set({
+      persona:per.key, nombre:per.nombre, sector:per.puesto||per.sector, fecha:$("ne-fecha").value||hoy(), ts:Date.now(),
+      items: ids.map(k=>{ const c=CATALOGO[k]; return { catId:k, producto:c.producto, tipo:c.tipo||"", marca:c.marca||"", cert:c.cert||"no", cantidad:NE.items[k] }; }),
+      firmada:!sinFirma, retira:$("ne-retira").value.trim(), obs:$("ne-obs").value.trim()
+    });
+    toast(`Entrega guardada · ${per.nombre}`);
+    NE = { persona:null, items:{} }; $("ne-retira").value=""; $("ne-obs").value=""; $("ne-buscar").value=""; padNE.limpiar();
+    renderNueva();
+  } catch(e){ toast("No se pudo guardar. Revisá la conexión.", true); }
+  $("ne-guardar").disabled = false;
+}
+
+/* =========================================================
+   OPERARIOS
+   ========================================================= */
+function renderOperarios(){
+  const p = PLANTA, per = personas(p), anio = new Date().getFullYear();
+  const lista = Object.values(per).filter(o=>VER_INACTIVOS || !o.inactivo);
+  const grupos = {}; lista.forEach(o=>(grupos[o.puesto||"Sin sector"]=grupos[o.puesto||"Sin sector"]||[]).push(o));
+  const stats = {}; Object.values(D[p].entregas).forEach(e=>{ const s=stats[e.persona]=stats[e.persona]||{n:0,ult:"",sf:0}; if(+e.fecha.slice(0,4)===anio) s.n+=e.items.reduce((a,it)=>a+n(it.cantidad),0); if(e.fecha>s.ult) s.ult=e.fecha; if(!e.firmada) s.sf++; });
+  $("v-operarios").innerHTML = `
+    <div class="card">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+        <input id="op-buscar" placeholder="Buscar operario" style="flex:1;min-width:180px" oninput="filtrarOps(this.value)">
+        <label style="display:flex;gap:6px;align-items:center;margin:0;font-size:13px"><input type="checkbox" style="width:auto" ${VER_INACTIVOS?"checked":""} onchange="VER_INACTIVOS=this.checked;renderOperarios()"> Ver inactivos</label>
+      </div>
+      ${Object.keys(grupos).sort().map(g=>`<div class="sec-t">${esc(g)} · ${grupos[g].length}</div>`+grupos[g].sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(o=>{ const s=stats[o.key]||{n:0,ult:"",sf:0}; return `
+        <div class="op" data-n="${esc(o.nombre.toLowerCase())}" onclick="abrirFicha('${o.key}')">${avatar(o.nombre)}
+          <div><div class="nm">${esc(o.nombre)}${o.inactivo?' <span class="badge b-red">inactivo</span>':""}</div><div class="s">${s.ult?"Última entrega "+fFecha(s.ult):"Sin entregas"}</div></div>
+          <div class="r">${s.n?`<span class="badge b-ok">${s.n} u. en ${anio}</span>`:""}${s.sf?`<span class="badge b-red">${s.sf} sin firma</span>`:""}${!o.dni&&!o.inactivo?`<span class="badge b-warn">sin DNI</span>`:""}</div>
+        </div>`; }).join("")).join("") || `<div class="empty"><span class="em">👷</span>No hay operarios cargados en Horas Extras de esta planta.</div>`}
+    </div>
+    <p class="small muted" style="text-align:center">Los operarios se toman de Horas Extras. Para sumar a alguien solo en EPP, usá “Otro operario” al cargar una entrega o Configuración.</p>`;
+}
+function filtrarOps(q){ q=q.toLowerCase(); document.querySelectorAll("#v-operarios .op").forEach(el=>el.style.display=el.dataset.n.includes(q)?"":"none"); }
+
+/* =========================================================
+   FICHA DEL OPERARIO + PLANILLA
+   ========================================================= */
+function hojasDe(p,key){ const f=filasDe(p,key), h=[]; for(let i=0;i<f.length;i+=FILAS_POR_HOJA) h.push(f.slice(i,i+FILAS_POR_HOJA)); if(!h.length) h.push([]); return h; }
+function cargarFirmas(p, entregas){
+  return Promise.all(entregas.filter(e=>e.firmada && !FIRMAS[e.id]).map(e=>db.ref(`${R}/firmas/${p}/${e.id}`).once("value").then(s=>{ FIRMAS[e.id]=s.val()||""; })));
+}
+function renderFicha(){
+  const p = PLANTA, o = personas(p)[FICHA];
+  if (!o){ $("v-ficha").innerHTML = `<button class="back" onclick="setTab('operarios')">← Volver</button><div class="empty">Operario no encontrado.</div>`; return; }
+  const ents = entregasDe(p, FICHA), hojas = hojasDe(p, FICHA);
+  if (FICHA_HOJA===null || FICHA_HOJA>=hojas.length) FICHA_HOJA = hojas.length-1;
+  const anio = new Date().getFullYear();
+  const uAnio = ents.filter(e=>+e.fecha.slice(0,4)===anio).reduce((a,e)=>a+e.items.reduce((b,it)=>b+n(it.cantidad),0),0);
+  const hoja = hojas[FICHA_HOJA], libres = FILAS_POR_HOJA - hoja.length;
+  const faltan = ents.filter(e=>e.firmada && FIRMAS[e.id]===undefined);
+  if (faltan.length) cargarFirmas(p, faltan).then(()=>{ if(TAB==="ficha"&&FICHA===o.key) renderFicha(); });
+  $("v-ficha").innerHTML = `
+    <button class="back" onclick="setTab('operarios')">← Operarios</button>
+    <div class="card" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+      ${avatar(o.nombre,true)}
+      <div style="flex:1;min-width:180px"><div style="font-size:19px;font-weight:700">${esc(o.nombre)}</div><div class="muted small" style="margin-top:3px">${esc(o.puesto)} · ${PLANTAS[p].corto}${o.dni?" · DNI "+esc(o.dni):""}</div></div>
+      <button class="primary" onclick="NE={persona:'${o.key}',items:{}};setTab('nueva')">➕ Nueva entrega</button>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="l">Unidades ${anio}</div><div class="v acc">${uAnio}</div></div>
+      <div class="kpi"><div class="l">Entregas totales</div><div class="v">${ents.length}</div></div>
+      <div class="kpi"><div class="l">Última entrega</div><div class="v" style="font-size:18px">${ents.length?fFecha(ents[ents.length-1].fecha):"—"}</div></div>
+      <div class="kpi"><div class="l">Hoja actual</div><div class="v" style="font-size:18px">${hojas.length} · ${hojas[hojas.length-1].length}/${FILAS_POR_HOJA}</div></div>
+    </div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <h3 style="margin:0">Planilla Res. 299/11</h3>
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><button onclick="imprimirPlanilla('${o.key}')">🖨️ Imprimir</button><button onclick="compartirPlanilla('${o.key}')">📤 Compartir</button></div>
+      </div>
+      ${hojas.length>1?`<div class="hojas">${hojas.map((h,i)=>`<button class="sm ${i===FICHA_HOJA?"on":""}" onclick="FICHA_HOJA=${i};renderFicha()">Hoja ${i+1}</button>`).join("")}</div>`:""}
+      <div class="tscroll"><table class="tbl">
+        <tr><th>#</th><th>Producto</th><th>Tipo / modelo</th><th>Marca</th><th>Cert.</th><th class="num">Cant.</th><th>Fecha</th><th>Firma</th><th></th></tr>
+        ${hoja.map((f,i)=>`<tr>
+          <td class="muted mono">${i+1}</td>
+          <td>${emojiDe(f.it.producto)} ${esc(f.it.producto)}</td><td>${esc(f.it.tipo)}</td><td>${esc(f.it.marca)}</td>
+          <td>${f.it.cert==="si"?"Sí":"No"}</td><td class="num">${esc(f.it.cantidad)}</td><td class="mono small">${fFecha(f.e.fecha)}</td>
+          <td>${f.e.firmada ? (FIRMAS[f.e.id]?`<img class="firma-img" src="${FIRMAS[f.e.id]}" alt="Firma">`:`<span class="small muted">cargando…</span>`) : `<button class="sm" style="color:var(--acc);border-color:var(--acc)" onclick="abrirModalFirma('${f.e.id}')">✍️ Firmar</button>`}
+            ${f.e.retira?`<div class="small muted">Retira: ${esc(f.e.retira)}</div>`:""}</td>
+          <td><button class="sm danger" title="Borrar entrega" onclick="borrarEntrega('${f.e.id}')">🗑</button></td>
+        </tr>`).join("")}
+        ${libres>0?`<tr><td colspan="9" class="small muted" style="text-align:center">${libres===FILAS_POR_HOJA?"Hoja vacía · 9 renglones libres":libres===1?"1 renglón libre en esta hoja":`${libres} renglones libres en esta hoja`}</td></tr>`:""}
+      </table></div>
+    </div>
+    <div class="card"><h3>Datos para la planilla</h3>
+      <div class="row">
+        <div><label>DNI${o.codigo?` (termina en ${esc(o.codigo)})`:""}</label><input value="${esc(o.dni)}" placeholder="Sin puntos" inputmode="numeric" onchange="guardarFicha('${o.key}','dni',this.value.trim())"></div>
+        <div><label>Puesto de trabajo</label><input value="${esc(o.puesto)}" list="dl-sectores" onchange="guardarFicha('${o.key}','puesto',this.value.trim())"></div>
+      </div>
+      <div style="margin-top:10px"><label>Elementos necesarios según el puesto</label><input value="${esc(o.necesarios)}" placeholder="TODOS LOS DETALLADOS ENTREGADOS" onchange="guardarFicha('${o.key}','necesarios',this.value.trim())"></div>
+      <div style="margin-top:10px"><label>Información adicional</label><textarea rows="2" onchange="guardarFicha('${o.key}','info',this.value.trim())">${esc(o.info)}</textarea></div>
+      <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="small muted">${o.origen==="he"?"Operario tomado de Horas Extras.":o.origen==="epp"?"Cargado solo en EPP.":"Ya no figura en Horas Extras; se conserva su historial."}</span>
+        <button class="sm ${o.inactivo?"":"danger"}" onclick="guardarFicha('${o.key}','inactivo',${o.inactivo?"null":"true"})">${o.inactivo?"Reactivar":"Dar de baja (inactivo)"}</button>
+      </div>
+    </div>`;
+}
+function guardarFicha(key, campo, valor){ db.ref(`${R}/fichas/${PLANTA}/${key}/${campo}`).set(valor===""?null:valor).then(()=>toast("Guardado")); }
+function borrarEntrega(id){
+  const e = D[PLANTA].entregas[id]; if (!e) return;
+  const det = e.items.map(it=>`${it.cantidad} ${it.producto}`).join(", ");
+  if (!confirm(`¿Borrar la entrega del ${fFecha(e.fecha)} (${det})?\nSe borran todos sus renglones y la firma.`)) return;
+  db.ref(`${R}/firmas/${PLANTA}/${id}`).remove(); db.ref(`${R}/entregas/${PLANTA}/${id}`).remove().then(()=>toast("Entrega borrada"));
+}
+function abrirModalFirma(id){
+  const e = D[PLANTA].entregas[id]; if (!e) return; firmaPendienteId = id;
+  $("mf-titulo").textContent = "Firma de " + e.nombre;
+  $("mf-detalle").textContent = fFecha(e.fecha) + " · " + e.items.map(it=>`${it.cantidad} ${it.producto}`).join(", ");
+  $("m-firma").classList.add("show"); requestAnimationFrame(()=>{ padMF.ajustar(); padMF.limpiar(); });
+}
+function cerrarModalFirma(){ $("m-firma").classList.remove("show"); firmaPendienteId=null; }
+async function guardarFirmaPendiente(){
+  if (padMF.vacio) return toast("Falta la firma", true);
+  const id = firmaPendienteId, img = padMF.png();
+  await db.ref(`${R}/firmas/${PLANTA}/${id}`).set(img); FIRMAS[id]=img;
+  await db.ref(`${R}/entregas/${PLANTA}/${id}/firmada`).set(true);
+  cerrarModalFirma(); toast("Firma guardada");
+}
+
+/* =========================================================
+   DOCUMENTOS (planilla oficial y resumen)
+   ========================================================= */
+async function docPlanilla(key){
+  const p = PLANTA, o = personas(p)[key], C = CONFIG||{};
+  await cargarFirmas(p, entregasDe(p,key));
+  const hojas = hojasDe(p,key);
+  const N = t => `<span class="nn">(${t})</span>`;
+  const extras = entregasDe(p,key).filter(e=>e.retira||e.obs).map(e=>`${fFecha(e.fecha)}: ${e.retira?"retira "+esc(e.retira):""}${e.retira&&e.obs?" · ":""}${esc(e.obs||"")}`);
+  const info = [esc(o.info), ...extras].filter(Boolean).join(" — ");
+  const pags = hojas.map((h,hi)=>`
+  <div class="hoja">
+    <div class="perf">LUGAR PARA PERFORAR</div>
+    <div class="res">Resolución 299/11, Anexo I</div>
+    <div class="tit">ENTREGA DE ROPA DE TRABAJO Y ELEMENTOS DE PROTECCIÓN PERSONAL</div>
+    <table class="enc"><tr><td style="width:70%">${N(1)} Razón Social: ${esc(C.razonSocial)}</td><td>${N(2)} C.U.I.T.: ${esc(C.cuit)}</td></tr></table>
+    <table class="enc"><tr><td style="width:34%">${N(3)} Domicilio: ${esc(C.domicilio)}</td><td style="width:24%">${N(4)} Localidad: ${esc(C.localidad)}</td><td style="width:14%">${N(5)} C.P.: ${esc(C.cp)}</td><td>${N(6)} Provincia: ${esc(C.provincia)}</td></tr></table>
+    <table class="enc"><tr><td style="width:70%">${N(7)} Nombre y Apellido del Trabajador: <b>${esc(o.nombre)}</b></td><td>${N(8)} D.N.I.: <b>${esc(o.dni)}</b></td></tr></table>
+    <table class="enc"><tr><td style="width:50%;height:22mm;vertical-align:top">${N(9)} Descripción breve del puesto/s de trabajo en el/los cuales se desempeña el trabajador: <b>${esc(o.puesto)}</b></td><td style="vertical-align:top">${N(10)} Elementos de protección personal, necesarios para el trabajador, según el puesto de trabajo: <b>${esc(o.necesarios||"TODOS LOS DETALLADOS ENTREGADOS")}</b></td></tr></table>
+    <table class="det">
+      <tr><th style="width:5%"></th><th>${N(11)}<br>Producto</th><th>${N(12)}<br>Tipo / Modelo</th><th>${N(13)}<br>Marca</th><th style="width:10%">${N(14)}<br>Posee certificación SI / NO</th><th style="width:8%">${N(15)}<br>Cantidad</th><th style="width:11%">${N(16)}<br>Fecha de entrega</th><th style="width:22%">${N(17)}<br>Firma del trabajador</th></tr>
+      ${Array.from({length:FILAS_POR_HOJA},(_,i)=>{ const f=h[i]; return f?`<tr><td>${i+1}</td><td>${esc(f.it.producto)}</td><td>${esc(f.it.tipo)}</td><td>${esc(f.it.marca)}</td><td>${f.it.cert==="si"?"SI":"NO"}</td><td>${esc(f.it.cantidad)}</td><td>${fFecha(f.e.fecha)}</td><td class="fi">${FIRMAS[f.e.id]?`<img src="${FIRMAS[f.e.id]}">`:""}</td></tr>`:`<tr><td>${i+1}</td><td></td><td></td><td></td><td></td><td></td><td></td><td class="fi"></td></tr>`; }).join("")}
+    </table>
+    <div class="info">${N(18)} Información adicional: ${hi===hojas.length-1?info:""}</div>
+    <div class="pie">${esc(PLANTAS[p].nombre)} · Hoja ${hi+1} de ${hojas.length}</div>
+  </div>`).join("");
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Planilla EPP · ${esc(o.nombre)}</title><style>
+  @page{size:A4;margin:10mm}
+  body{margin:0;font-family:Arial,Helvetica,sans-serif;font-size:10.5px;color:#000;background:#e9e9e9}
+  .hoja{background:#fff;width:190mm;min-height:270mm;margin:10px auto;border:1px solid #000;page-break-after:always;position:relative}
+  .hoja:last-child{page-break-after:auto}
+  .perf{height:24mm;text-align:center;font-size:12px;padding-top:2mm;border-bottom:1px solid #000}
+  .res{text-align:right;font-family:Georgia,serif;font-style:italic;font-weight:bold;padding:2px 6px;font-size:11px}
+  .tit{background:#000;color:#fff;text-align:center;font-weight:bold;font-size:12.5px;padding:4px}
+  table{width:100%;border-collapse:collapse}
+  .enc td{border:1px solid #000;padding:4px 5px}
+  .nn{color:#1f5fa8;font-size:8px;vertical-align:super}
+  .det{margin-top:6mm}
+  .det th{border:1px solid #000;font-weight:normal;padding:3px;font-size:10px;background:#f2f2f2}
+  .det td{border:1px solid #000;text-align:center;height:11mm;padding:1px 3px}
+  .det td.fi img{max-height:10mm;max-width:100%}
+  .info{border:1px solid #000;border-top:none;min-height:30mm;padding:4px 5px}
+  .pie{position:absolute;bottom:2mm;right:4mm;font-size:8.5px;color:#666}
+  @media print{body{background:#fff}.hoja{margin:0;border:1px solid #000}}
+  </style></head><body>${pags}</body></html>`;
+}
+
+function docResumen(anio){
+  const p = PLANTA, ents = Object.values(D[p].entregas).filter(e=>+e.fecha.slice(0,4)===+anio);
+  const prods = {}, sect = {}, ops = {};
+  ents.forEach(e=>e.items.forEach(it=>{ const q=n(it.cantidad), m=+e.fecha.slice(5,7)-1;
+    (prods[it.producto]=prods[it.producto]||Array(12).fill(0))[m]+=q;
+    sect[e.sector]=sect[e.sector]||{}; sect[e.sector][it.producto]=(sect[e.sector][it.producto]||0)+q;
+    ops[e.persona]=ops[e.persona]||{nombre:e.nombre,sector:e.sector,u:0,ent:new Set()}; ops[e.persona].u+=q; ops[e.persona].ent.add(e.id); }));
+  const pl = Object.keys(prods), totMes = Array(12).fill(0); pl.forEach(pr=>prods[pr].forEach((v,i)=>totMes[i]+=v));
+  const tot = totMes.reduce((a,b)=>a+b,0);
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Resumen EPP ${anio}</title><style>
+  body{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;max-width:900px;margin:20px auto;padding:0 16px;font-size:12px}
+  h1{font-size:20px;margin:0}.s{color:#666;margin:4px 0 18px}h2{font-size:14px;margin:22px 0 8px;border-bottom:2px solid ${PLANTA==="aceitera"?"#6d9a2c":"#c98a2a"};padding-bottom:4px}
+  table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:5px 6px;text-align:right}th:first-child,td:first-child{text-align:left}th{background:#f3f3f3}
+  .chips{display:flex;gap:10px;flex-wrap:wrap}.c{border:1px solid #ddd;border-radius:8px;padding:8px 12px}.c b{font-size:18px;display:block}
+  tr.t td{font-weight:bold;background:#fafafa}@page{size:A4 landscape;margin:12mm}</style></head><body>
+  <h1>Entrega de EPP · Resumen ${anio}</h1><div class="s">${esc(CONFIG.razonSocial)} · ${esc(PLANTAS[p].nombre)} · generado el ${fFecha(hoy())}</div>
+  <div class="chips"><div class="c">Unidades<b>${tot}</b></div><div class="c">Entregas<b>${ents.length}</b></div><div class="c">Operarios<b>${Object.keys(ops).length}</b></div></div>
+  <h2>Mes a mes</h2><table><tr><th>Elemento</th>${MESES.map(m=>`<th>${m}</th>`).join("")}<th>Total</th></tr>
+  ${pl.map(pr=>`<tr><td>${esc(pr)}</td>${prods[pr].map(v=>`<td>${v||""}</td>`).join("")}<td><b>${prods[pr].reduce((a,b)=>a+b,0)}</b></td></tr>`).join("")}
+  <tr class="t"><td>Total</td>${totMes.map(v=>`<td>${v||""}</td>`).join("")}<td>${tot}</td></tr></table>
+  <h2>Por sector</h2><table><tr><th>Sector</th>${pl.map(pr=>`<th>${esc(pr)}</th>`).join("")}<th>Total</th></tr>
+  ${Object.keys(sect).sort().map(s=>`<tr><td>${esc(s)}</td>${pl.map(pr=>`<td>${sect[s][pr]||""}</td>`).join("")}<td><b>${Object.values(sect[s]).reduce((a,b)=>a+b,0)}</b></td></tr>`).join("")}</table>
+  <h2>Por operario</h2><table><tr><th>Operario</th><th>Sector</th><th>Entregas</th><th>Unidades</th></tr>
+  ${Object.values(ops).sort((a,b)=>b.u-a.u).map(o=>`<tr><td>${esc(o.nombre)}</td><td style="text-align:left">${esc(o.sector)}</td><td>${o.ent.size}</td><td>${o.u}</td></tr>`).join("")}</table>
+  </body></html>`;
+}
+
+function imprimirHTML(html){
+  const w = window.open("", "_blank");
+  if (!w) return toast("Permití las ventanas emergentes para imprimir", true);
+  w.document.open(); w.document.write(html); w.document.close();
+  setTimeout(()=>{ w.focus(); w.print(); }, 700);
+}
+async function compartirHTML(html, nombre){
+  try {
+    const zip = new JSZip(); zip.file(nombre+".html", html);
+    const blob = await zip.generateAsync({type:"blob"});
+    const file = new File([blob], nombre+".zip", {type:"application/zip"});
+    if (navigator.canShare && navigator.canShare({files:[file]})) {
+      try { await navigator.share({files:[file], title:nombre}); return; } catch(e){ if (e.name==="AbortError") return; }
+    }
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nombre+".zip"; a.click();
+    toast("Archivo descargado");
+  } catch(e){ toast("No se pudo generar el archivo", true); }
+}
+const nombreArchivo = s => String(s).normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Za-z0-9]+/g,"_").replace(/^_|_$/g,"");
+async function imprimirPlanilla(key){ toast("Preparando planilla…"); imprimirHTML(await docPlanilla(key)); }
+async function compartirPlanilla(key){ const o=personas(PLANTA)[key]; toast("Preparando planilla…"); compartirHTML(await docPlanilla(key), "Planilla_EPP_"+nombreArchivo(o.nombre)); }
+
+/* =========================================================
+   ESTADÍSTICAS
+   ========================================================= */
+function renderEstad(){
+  const p = PLANTA, aniosL = anios(p);
+  const ents = Object.values(D[p].entregas);
+  const delAnio = ents.filter(e=>+e.fecha.slice(0,4)===+ESTAD_ANIO);
+  let cuerpo = "";
+  if (ESTAD_MODO==="mes"){
+    const prods={}; delAnio.forEach(e=>e.items.forEach(it=>{ (prods[it.producto]=prods[it.producto]||Array(12).fill(0))[+e.fecha.slice(5,7)-1]+=n(it.cantidad); }));
+    const max = Math.max(1,...Object.values(prods).flat());
+    const tm = Array(12).fill(0); Object.values(prods).forEach(v=>v.forEach((x,i)=>tm[i]+=x));
+    cuerpo = Object.keys(prods).length ? `<div class="card"><h3>Unidades por elemento · ${ESTAD_ANIO}</h3><div class="tscroll"><table class="tbl"><tr><th>Elemento</th>${MESES.map(m=>`<th class="num">${m}</th>`).join("")}<th class="num">Total</th></tr>
+      ${Object.entries(prods).map(([pr,v])=>`<tr><td style="white-space:nowrap">${emojiDe(pr)} ${esc(pr)}</td>${v.map(x=>`<td class="num" style="${x?`background:color-mix(in srgb, var(--acc) ${Math.round(12+60*x/max)}%, transparent)`:""}">${x||"·"}</td>`).join("")}<td class="num" style="font-weight:700">${v.reduce((a,b)=>a+b,0)}</td></tr>`).join("")}
+      <tr><td style="font-weight:700">Total</td>${tm.map(x=>`<td class="num" style="font-weight:700">${x||"·"}</td>`).join("")}<td class="num" style="font-weight:700;color:var(--acc)">${tm.reduce((a,b)=>a+b,0)}</td></tr></table></div></div>
+      <div class="card"><h3>Gráfico mensual</h3><div style="position:relative;height:260px"><canvas id="ch-es"></canvas></div></div>` : vacioEstad();
+  }
+  if (ESTAD_MODO==="anio"){
+    const prods={}, ys=[...aniosL].reverse();
+    ents.forEach(e=>e.items.forEach(it=>{ const o=prods[it.producto]=prods[it.producto]||{}; o[e.fecha.slice(0,4)]=(o[e.fecha.slice(0,4)]||0)+n(it.cantidad); }));
+    cuerpo = Object.keys(prods).length ? `<div class="card"><h3>Comparación por año</h3><div class="tscroll"><table class="tbl"><tr><th>Elemento</th>${ys.map(y=>`<th class="num">${y}</th>`).join("")}</tr>
+      ${Object.entries(prods).map(([pr,o])=>`<tr><td>${emojiDe(pr)} ${esc(pr)}</td>${ys.map(y=>`<td class="num">${o[y]||"·"}</td>`).join("")}</tr>`).join("")}
+      <tr><td style="font-weight:700">Total</td>${ys.map(y=>`<td class="num" style="font-weight:700;color:var(--acc)">${Object.values(prods).reduce((a,o)=>a+(o[y]||0),0)}</td>`).join("")}</tr></table></div></div>
+      <div class="card"><h3>Gráfico por año</h3><div style="position:relative;height:260px"><canvas id="ch-es"></canvas></div></div>` : vacioEstad();
+    if (Object.keys(prods).length) setTimeout(()=>dibujar("ch-es",{type:"bar",data:{labels:ys.map(String),datasets:Object.entries(prods).map(([pr,o],i)=>({label:pr,data:ys.map(y=>o[y]||0),backgroundColor:CHART_COLORS[i%CHART_COLORS.length],borderRadius:3}))},options:opcionesChart(true)}));
+  }
+  if (ESTAD_MODO==="sector"){
+    const s={}; delAnio.forEach(e=>e.items.forEach(it=>{ const o=s[e.sector]=s[e.sector]||{t:0,p:{}}; o.t+=n(it.cantidad); o.p[it.producto]=(o.p[it.producto]||0)+n(it.cantidad); }));
+    const max=Math.max(1,...Object.values(s).map(o=>o.t));
+    cuerpo = Object.keys(s).length ? `<div class="card"><h3>Unidades por sector · ${ESTAD_ANIO}</h3>${Object.entries(s).sort((a,b)=>b[1].t-a[1].t).map(([k,o])=>`
+      <div style="margin:12px 0"><div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:5px"><b>${esc(k)}</b><span class="mono">${o.t}</span></div>
+      <div class="bar"><i style="width:${Math.round(100*o.t/max)}%"></i></div>
+      <div class="small muted" style="margin-top:5px">${Object.entries(o.p).sort((a,b)=>b[1]-a[1]).map(([pr,q])=>`${emojiDe(pr)} ${esc(pr)} ${q}`).join(" &nbsp; ")}</div></div>`).join("")}</div>` : vacioEstad();
+  }
+  if (ESTAD_MODO==="operario"){
+    const o={}; delAnio.forEach(e=>{ const x=o[e.persona]=o[e.persona]||{nombre:e.nombre,sector:e.sector,u:0,ent:0,p:{}}; x.ent++; e.items.forEach(it=>{ x.u+=n(it.cantidad); x.p[it.producto]=(x.p[it.producto]||0)+n(it.cantidad); }); });
+    cuerpo = Object.keys(o).length ? `<div class="card"><h3>Por operario · ${ESTAD_ANIO}</h3>${Object.entries(o).sort((a,b)=>b[1].u-a[1].u).map(([k,x])=>`
+      <div class="op" onclick="abrirFicha('${k}')">${avatar(x.nombre)}<div><div class="nm">${esc(x.nombre)}</div><div class="s">${esc(x.sector)} · ${x.ent} entrega${x.ent>1?"s":""}</div></div>
+      <div class="r" style="align-items:center"><span class="small">${Object.entries(x.p).map(([pr,q])=>`${emojiDe(pr)}${q}`).join(" ")}</span><span class="badge b-ok">${x.u} u.</span></div></div>`).join("")}</div>` : vacioEstad();
+  }
+  $("v-estad").innerHTML = `
+    <div class="sub-tabs">${[["mes","Mes a mes"],["anio","Año a año"],["sector","Por sector"],["operario","Por operario"]].map(([k,t])=>`<button class="${ESTAD_MODO===k?"on":""}" onclick="ESTAD_MODO='${k}';renderEstad()">${t}</button>`).join("")}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+      ${ESTAD_MODO!=="anio"?`<select style="width:auto" onchange="ESTAD_ANIO=+this.value;renderEstad()">${aniosL.map(a=>`<option ${a==ESTAD_ANIO?"selected":""}>${a}</option>`).join("")}</select>`:""}
+      <span style="flex:1"></span>
+      <button onclick="imprimirHTML(docResumen(${ESTAD_ANIO}))">🖨️ Imprimir resumen ${ESTAD_ANIO}</button>
+      <button onclick="compartirHTML(docResumen(${ESTAD_ANIO}),'Resumen_EPP_${PLANTAS[PLANTA].corto}_${ESTAD_ANIO}')">📤 Compartir</button>
+    </div>${cuerpo}`;
+  if (ESTAD_MODO==="mes" && delAnio.length) graficoMensual("ch-es", p, ESTAD_ANIO);
+}
+function vacioEstad(){ return `<div class="card"><div class="empty"><span class="em">📈</span>Sin datos para este período.</div></div>`; }
+
+/* =========================================================
+   CONFIGURACIÓN
+   ========================================================= */
+function renderConfig(){
+  const C = CONFIG, ex = Object.entries(D[PLANTA].extras), fi = D[PLANTA].fichas;
+  const campo = (k,l) => `<div><label>${l}</label><input value="${esc(C[k])}" onchange="db.ref('${R}/config/${k}').set(this.value.trim()).then(()=>toast('Guardado'))"></div>`;
+  $("v-config").innerHTML = `
+    <div class="card"><h3>Datos de la empresa (encabezado de la planilla)</h3>
+      <div class="row">${campo("razonSocial","Razón social")}${campo("cuit","C.U.I.T.")}</div>
+      <div class="row" style="margin-top:8px">${campo("domicilio","Domicilio")}${campo("localidad","Localidad")}</div>
+      <div class="row" style="margin-top:8px">${campo("cp","C.P.")}${campo("provincia","Provincia")}</div>
+    </div>
+    <div class="card"><h3>Listado de EPP</h3>
+      <div class="tscroll"><table class="tbl"><tr><th></th><th>Producto</th><th>Tipo / modelo</th><th>Marca</th><th>Cert.</th><th></th></tr>
+      ${catOrden(false).map(([k,c])=>`<tr style="${c.activo===false?"opacity:.5":""}">
+        <td><input value="${esc(c.emoji||"📦")}" style="width:46px;text-align:center;padding:6px" onchange="editCat('${k}','emoji',this.value)"></td>
+        <td><input value="${esc(c.producto)}" onchange="editCat('${k}','producto',this.value)"></td>
+        <td><input value="${esc(c.tipo)}" onchange="editCat('${k}','tipo',this.value)"></td>
+        <td><input value="${esc(c.marca)}" onchange="editCat('${k}','marca',this.value)"></td>
+        <td><select style="width:70px" onchange="editCat('${k}','cert',this.value)"><option value="si" ${c.cert==="si"?"selected":""}>Sí</option><option value="no" ${c.cert!=="si"?"selected":""}>No</option></select></td>
+        <td><button class="sm ${c.activo===false?"":"danger"}" onclick="editCat('${k}','activo',${c.activo===false})">${c.activo===false?"Activar":"Dar de baja"}</button></td></tr>`).join("")}
+      </table></div>
+      <div class="row" style="margin-top:12px;align-items:flex-end">
+        <div><label>Nuevo producto</label><input id="nc-prod" placeholder="Casco"></div><div><label>Tipo / modelo</label><input id="nc-tipo"></div>
+        <div><label>Marca</label><input id="nc-marca"></div>
+        <div style="flex:0 0 90px;min-width:90px"><label>Cert.</label><select id="nc-cert"><option value="si">Sí</option><option value="no">No</option></select></div>
+        <button class="primary" style="flex:0 0 auto" onclick="nuevoCat()">＋ Agregar</button>
+      </div>
+      <p class="small muted" style="margin-bottom:0">Los cambios de marca o modelo valen para las entregas nuevas; lo ya entregado conserva sus datos.</p>
+    </div>
+    <div class="card"><h3>Personas cargadas solo en EPP · ${PLANTAS[PLANTA].corto}</h3>
+      ${ex.length?ex.map(([id,o])=>{ const k="x_"+id, inac=fi[k]&&fi[k].inactivo; return `<div class="li"><span>${esc(o.apellidoNombre)} <span class="s">· ${esc(o.sector)}</span>${inac?' <span class="badge b-red">inactivo</span>':""}</span>
+        <span style="display:flex;gap:6px"><button class="sm" onclick="editExtra('${id}')">Editar</button><button class="sm" onclick="abrirFicha('${k}')">Ficha</button></span></div>`; }).join(""):`<div class="small muted">No hay personas extra en esta planta.</div>`}
+      <div class="row" style="margin-top:12px;align-items:flex-end">
+        <div><label>Apellido y nombre</label><input id="nx-nombre"></div><div><label>Puesto / sector</label><input id="nx-sector" list="dl-sectores"></div>
+        <button class="primary" style="flex:0 0 auto" onclick="nuevoExtra()">＋ Agregar</button>
+      </div>
+      <p class="small muted" style="margin-bottom:0">Los operarios de Horas Extras se administran desde esa app. Para dar de baja a alguien, entrá a su ficha.</p>
+    </div>`;
+}
+function editCat(k,campo,v){ db.ref(`${R}/catalogo/${k}/${campo}`).set(typeof v==="string"?v.trim():v).then(()=>toast("Guardado")); }
+function nuevoCat(){
+  const prod=$("nc-prod").value.trim(); if(!prod) return toast("Escribí el producto",true);
+  db.ref(R+"/catalogo").push({producto:prod,tipo:$("nc-tipo").value.trim(),marca:$("nc-marca").value.trim(),cert:$("nc-cert").value,emoji:"📦",orden:99,activo:true}).then(()=>toast("Elemento agregado"));
+}
+function nuevoExtra(){
+  const nm=$("nx-nombre").value.trim().toUpperCase(); if(!nm) return toast("Escribí el nombre",true);
+  db.ref(`${R}/extras/${PLANTA}`).push({apellidoNombre:nm,sector:$("nx-sector").value.trim()||"Sin sector"}).then(()=>toast("Persona agregada"));
+}
+function editExtra(id){
+  const o=D[PLANTA].extras[id]; const nm=prompt("Apellido y nombre:",o.apellidoNombre); if(nm===null) return;
+  const sc=prompt("Puesto / sector:",o.sector); if(sc===null) return;
+  db.ref(`${R}/extras/${PLANTA}/${id}`).update({apellidoNombre:nm.trim().toUpperCase(),sector:sc.trim()}).then(()=>toast("Guardado"));
+}
+
+renderActual();
+</script>
+</body>
+</html>
