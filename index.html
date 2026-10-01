@@ -85,9 +85,9 @@ button.sm{padding:5px 10px;font-size:12px}
 .step{display:flex;align-items:center;gap:6px;margin-left:auto}
 .step button{width:34px;height:34px;padding:0;font-size:18px}
 .step span{min-width:26px;text-align:center;font-family:'JetBrains Mono',monospace;font-weight:600}
-.pad-wrap{background:#f4f1e8;border-radius:10px;position:relative;height:190px;touch-action:none}
-.pad-wrap canvas{width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
-.pad-wrap .hint{position:absolute;bottom:34px;left:20px;right:20px;border-bottom:1px dashed #b8b2a0;pointer-events:none}
+.pad-wrap{background:#f4f1e8;border-radius:10px;position:relative;aspect-ratio:4/1;min-height:90px;max-height:220px;touch-action:none}
+.pad-wrap canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+.pad-wrap .hint{position:absolute;bottom:16%;left:20px;right:20px;border-bottom:1px dashed #b8b2a0;pointer-events:none}
 .pad-wrap .hint span{position:absolute;left:0;bottom:6px;color:#a39d8a;font-size:12px}
 .tbl{width:100%;border-collapse:collapse;font-size:13px}
 .tbl th{text-align:left;color:var(--muted);font-weight:500;padding:8px 6px;border-bottom:1px solid var(--line);font-size:12px;white-space:nowrap}
@@ -185,7 +185,7 @@ button.sm{padding:5px 10px;font-size:12px}
       </div>
     </div>
     <div class="card">
-      <h3>Firma del trabajador</h3>
+      <h3>Firma digital</h3>
       <div class="pad-wrap"><canvas id="ne-pad"></canvas><div class="hint"><span>Firmar aquí con el dedo</span></div></div>
       <div style="display:flex;gap:8px;margin-top:12px;justify-content:space-between;flex-wrap:wrap">
         <button onclick="padNE.limpiar()">Borrar firma</button>
@@ -236,7 +236,7 @@ const PLANTAS = {
 };
 const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 const MESES_L = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-const FILAS_POR_HOJA = 9;
+const FILAS_POR_HOJA = 16;
 const CAT_INICIAL = [
   ["Pantalón","grafa","Ombu","si","👖"],
   ["Remera","algodón","Genérica","no","👕"],
@@ -254,7 +254,7 @@ const AV_COLORS = [["#4a3a1e","#e8a33d"],["#1d3550","#7fb0e0"],["#17352c","#6fcc
    ESTADO
    ========================================================= */
 const D = {};
-Object.keys(PLANTAS).forEach(p => D[p] = { he:{}, extras:{}, fichas:{}, entregas:{} });
+Object.keys(PLANTAS).forEach(p => D[p] = { he:{}, extras:{}, fichas:{}, entregas:{}, cierres:{}, registro:{} });
 let CATALOGO = {}, CONFIG = null;
 let PLANTA = "balanceados";
 try { PLANTA = localStorage.getItem("epp_planta") || "balanceados"; } catch(e){}
@@ -264,6 +264,8 @@ let FICHA = null, FICHA_HOJA = null;
 let NE = { persona:null, items:{} };
 let ESTAD_MODO = "mes", ESTAD_ANIO = new Date().getFullYear(), TB_ANIO = new Date().getFullYear(), TB_MES = "todo";
 let VER_INACTIVOS = false;
+const ANIO_ACT = new Date().getFullYear();
+let OP_ANIO = ANIO_ACT, OP_MES = "todo", FI_ANIO = ANIO_ACT, FI_MES = "todo", ESTAD_MES = "todo";
 const FIRMAS = {};      // cache entregaId -> dataURL
 const CHARTS = {};
 let firmaPendienteId = null;
@@ -294,6 +296,8 @@ Object.keys(PLANTAS).forEach(p => {
   db.ref(PLANTAS[p].he + "/personal").on("value", s => { D[p].he = s.val()||{}; refrescar(); });
   db.ref(`${R}/extras/${p}`).on("value", s => { D[p].extras = s.val()||{}; refrescar(); });
   db.ref(`${R}/fichas/${p}`).on("value", s => { D[p].fichas = s.val()||{}; refrescar(); });
+  db.ref(`${R}/cierres/${p}`).on("value", s => { D[p].cierres = s.val()||{}; refrescar(); });
+  db.ref(`${R}/registro/${p}`).on("value", s => { D[p].registro = s.val()||{}; refrescar(); });
   db.ref(`${R}/entregas/${p}`).on("value", s => {
     const v = s.val()||{}; Object.keys(v).forEach(k => { v[k].id = k; v[k].items = v[k].items ? Object.values(v[k].items) : []; });
     D[p].entregas = v; refrescar();
@@ -426,7 +430,7 @@ function graficoMensual(id, p, anio){
     prods[it.producto]=prods[it.producto]||Array(12).fill(0); prods[it.producto][+e.fecha.slice(5,7)-1]+=n(it.cantidad);
   }));
   const ds = Object.entries(prods).map(([pr,v],i)=>({label:pr,data:v,backgroundColor:CHART_COLORS[i%CHART_COLORS.length],borderRadius:3}));
-  dibujar(id,{type:"bar",data:{labels:MESES,datasets:ds},options:opcionesChart(true)});
+  dibujar(id,{type:"bar",data:{labels:MESES,datasets:ds},options:opcionesChart(false)});
 }
 function opcionesChart(stacked){
   const c = getComputedStyle(document.body), m = c.getPropertyValue("--muted").trim(), l = c.getPropertyValue("--line").trim();
@@ -454,7 +458,14 @@ function Pad(cv){
   cv.addEventListener("pointermove", e => { if(!dibujando) return; const q=pos(e); ctx.beginPath(); ctx.moveTo(ult.x,ult.y); ctx.lineTo(q.x,q.y); ctx.stroke(); ult=q; e.preventDefault(); });
   ["pointerup","pointercancel"].forEach(t=>cv.addEventListener(t,()=>dibujando=false));
   this.limpiar = () => { ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv.width,cv.height); ctx.restore(); this.vacio=true; };
-  this.png = () => { const o=document.createElement("canvas"); o.width=600; o.height=Math.round(600*cv.height/cv.width); o.getContext("2d").drawImage(cv,0,0,o.width,o.height); return o.toDataURL("image/png"); };
+  this.png = () => {   // recorta los márgenes en blanco para que la firma llene el renglón
+    const w=cv.width, h=cv.height, d=ctx.getImageData(0,0,w,h).data; let x0=w, y0=h, x1=-1, y1=-1;
+    for (let y=0;y<h;y+=2) for (let x=0;x<w;x+=2) if (d[(y*w+x)*4+3]>20){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; }
+    if (x1<0){ x0=0; y0=0; x1=w-1; y1=h-1; }
+    const m=4; x0=Math.max(0,x0-m); y0=Math.max(0,y0-m); x1=Math.min(w-1,x1+m); y1=Math.min(h-1,y1+m);
+    const bw=x1-x0+1, bh=y1-y0+1, H=Math.min(160,bh), W=Math.max(1,Math.round(bw*H/bh));
+    const o=document.createElement("canvas"); o.width=W; o.height=H; o.getContext("2d").drawImage(cv,x0,y0,bw,bh,0,0,W,H); return o.toDataURL("image/png");
+  };
 }
 const padNE = new Pad($("ne-pad"));
 const padMF = new Pad($("mf-pad"));
@@ -530,21 +541,28 @@ async function guardarEntrega(){
 /* =========================================================
    OPERARIOS
    ========================================================= */
+function selPeriodo(va, vm, anioV, mesV, fn){
+  return `<select style="width:auto" onchange="${va}=+this.value;${fn}()">${anios(PLANTA).map(y=>`<option ${y==anioV?"selected":""}>${y}</option>`).join("")}</select>`+
+         `<select style="width:auto" onchange="${vm}=this.value==='todo'?'todo':+this.value;${fn}()"><option value="todo">Todo el año</option>${MESES_L.map((x,i)=>`<option value="${i+1}" ${mesV==i+1?"selected":""}>${x}</option>`).join("")}</select>`;
+}
+function textoPeriodo(a,m){ return m==="todo" ? `en ${a}` : `en ${MESES_L[m-1].toLowerCase()} ${a}`; }
+function fFechaHora(ts){ const d=new Date(ts); return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; }
 function renderOperarios(){
-  const p = PLANTA, per = personas(p), anio = new Date().getFullYear();
+  const p = PLANTA, per = personas(p);
   const lista = Object.values(per).filter(o=>VER_INACTIVOS || !o.inactivo);
   const grupos = {}; lista.forEach(o=>(grupos[o.puesto||"Sin sector"]=grupos[o.puesto||"Sin sector"]||[]).push(o));
-  const stats = {}; Object.values(D[p].entregas).forEach(e=>{ const s=stats[e.persona]=stats[e.persona]||{n:0,ult:"",sf:0}; if(+e.fecha.slice(0,4)===anio) s.n+=e.items.reduce((a,it)=>a+n(it.cantidad),0); if(e.fecha>s.ult) s.ult=e.fecha; if(!e.firmada) s.sf++; });
+  const stats = {}; Object.values(D[p].entregas).forEach(e=>{ const s=stats[e.persona]=stats[e.persona]||{u:0,ult:"",sf:0}; if(enPeriodo(e,OP_ANIO,OP_MES)) s.u+=e.items.reduce((a,it)=>a+n(it.cantidad),0); if(e.fecha>s.ult) s.ult=e.fecha; if(!e.firmada) s.sf++; });
   $("v-operarios").innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">${selPeriodo("OP_ANIO","OP_MES",OP_ANIO,OP_MES,"renderOperarios")}<span class="small muted">Unidades retiradas ${textoPeriodo(OP_ANIO,OP_MES)}</span></div>
     <div class="card">
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
         <input id="op-buscar" placeholder="Buscar operario" style="flex:1;min-width:180px" oninput="filtrarOps(this.value)">
         <label style="display:flex;gap:6px;align-items:center;margin:0;font-size:13px"><input type="checkbox" style="width:auto" ${VER_INACTIVOS?"checked":""} onchange="VER_INACTIVOS=this.checked;renderOperarios()"> Ver inactivos</label>
       </div>
-      ${Object.keys(grupos).sort().map(g=>`<div class="sec-t">${esc(g)} · ${grupos[g].length}</div>`+grupos[g].sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(o=>{ const s=stats[o.key]||{n:0,ult:"",sf:0}; return `
+      ${Object.keys(grupos).sort().map(g=>`<div class="sec-t">${esc(g)} · ${grupos[g].length}</div>`+grupos[g].sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(o=>{ const s=stats[o.key]||{u:0,ult:"",sf:0}; return `
         <div class="op" data-n="${esc(o.nombre.toLowerCase())}" onclick="abrirFicha('${o.key}')">${avatar(o.nombre)}
           <div><div class="nm">${esc(o.nombre)}${o.inactivo?' <span class="badge b-red">inactivo</span>':""}</div><div class="s">${s.ult?"Última entrega "+fFecha(s.ult):"Sin entregas"}</div></div>
-          <div class="r">${s.n?`<span class="badge b-ok">${s.n} u. en ${anio}</span>`:""}${s.sf?`<span class="badge b-red">${s.sf} sin firma</span>`:""}${!o.dni&&!o.inactivo?`<span class="badge b-warn">sin DNI</span>`:""}</div>
+          <div class="r">${s.u?`<span class="badge b-ok">${s.u} u.</span>`:`<span class="badge" style="color:var(--muted)">0 u.</span>`}${s.sf?`<span class="badge b-red">${s.sf} sin firma</span>`:""}${!o.dni&&!o.inactivo?`<span class="badge b-warn">sin DNI</span>`:""}</div>
         </div>`; }).join("")).join("") || `<div class="empty"><span class="em">👷</span>No hay operarios cargados en Horas Extras de esta planta.</div>`}
     </div>
     <p class="small muted" style="text-align:center">Los operarios se toman de Horas Extras. Para sumar a alguien solo en EPP, usá “Otro operario” al cargar una entrega o Configuración.</p>`;
@@ -554,7 +572,22 @@ function filtrarOps(q){ q=q.toLowerCase(); document.querySelectorAll("#v-operari
 /* =========================================================
    FICHA DEL OPERARIO + PLANILLA
    ========================================================= */
-function hojasDe(p,key){ const f=filasDe(p,key), h=[]; for(let i=0;i<f.length;i+=FILAS_POR_HOJA) h.push(f.slice(i,i+FILAS_POR_HOJA)); if(!h.length) h.push([]); return h; }
+function hojasDe(p,key){
+  const ents = entregasDe(p,key);
+  const cierres = Object.entries(((D[p].cierres||{})[key])||{}).map(([id,c])=>({id,...c})).sort((a,b)=>a.ts-b.ts);
+  const usados = new Set(), hojas = [];
+  const filas = list => { const r=[]; list.forEach(e=>e.items.forEach(it=>r.push({e,it}))); return r; };
+  cierres.forEach(c => {
+    const es = ents.filter(e=>c.ids && c.ids[e.id]); es.forEach(e=>usados.add(e.id));
+    const f = filas(es); for (let i=0;i<f.length;i+=FILAS_POR_HOJA) hojas.push({ rows:f.slice(i,i+FILAS_POR_HOJA), cerrada:true, cierre:c });
+  });
+  const ab = filas(ents.filter(e=>!usados.has(e.id)));
+  for (let i=0;i<ab.length;i+=FILAS_POR_HOJA) hojas.push({ rows:ab.slice(i,i+FILAS_POR_HOJA), cerrada:false });
+  if (!ab.length || ab.length % FILAS_POR_HOJA === 0) hojas.push({ rows:[], cerrada:false });
+  hojas.forEach((h,i)=>h.num=i+1);
+  return hojas;
+}
+function grupoHojas(hojas, idx){ const h=hojas[idx]; return h.cerrada ? hojas.filter(x=>x.cerrada && x.cierre.id===h.cierre.id) : hojas.filter(x=>!x.cerrada && x.rows.length); }
 function cargarFirmas(p, entregas){
   return Promise.all(entregas.filter(e=>e.firmada && !FIRMAS[e.id]).map(e=>db.ref(`${R}/firmas/${p}/${e.id}`).once("value").then(s=>{ FIRMAS[e.id]=s.val()||""; })));
 }
@@ -563,11 +596,16 @@ function renderFicha(){
   if (!o){ $("v-ficha").innerHTML = `<button class="back" onclick="setTab('operarios')">← Volver</button><div class="empty">Operario no encontrado.</div>`; return; }
   const ents = entregasDe(p, FICHA), hojas = hojasDe(p, FICHA);
   if (FICHA_HOJA===null || FICHA_HOJA>=hojas.length) FICHA_HOJA = hojas.length-1;
-  const anio = new Date().getFullYear();
-  const uAnio = ents.filter(e=>+e.fecha.slice(0,4)===anio).reduce((a,e)=>a+e.items.reduce((b,it)=>b+n(it.cantidad),0),0);
-  const hoja = hojas[FICHA_HOJA], libres = FILAS_POR_HOJA - hoja.length;
+  const hoja = hojas[FICHA_HOJA], libres = FILAS_POR_HOJA - hoja.rows.length;
+  const renAb = hojas.filter(h=>!h.cerrada).reduce((a,h)=>a+h.rows.length,0);
+  const enHoja = {}; hojas.forEach(h=>h.rows.forEach(r=>enHoja[r.e.id]=h));
   const faltan = ents.filter(e=>e.firmada && FIRMAS[e.id]===undefined);
   if (faltan.length) cargarFirmas(p, faltan).then(()=>{ if(TAB==="ficha"&&FICHA===o.key) renderFicha(); });
+  const entsP = ents.filter(e=>enPeriodo(e,FI_ANIO,FI_MES)).reverse();
+  const tot = {}; entsP.forEach(e=>e.items.forEach(it=>tot[it.producto]=(tot[it.producto]||0)+n(it.cantidad)));
+  const uPer = Object.values(tot).reduce((a,b)=>a+b,0);
+  const reg = Object.values(((D[p].registro||{})[FICHA])||{}).sort((a,b)=>b.ts-a.ts);
+  const TIPOS = { impresion:["🖨️","Impresión y cierre"], reimpresion:["🔁","Reimpresión"], envio:["📤","Enviada"] };
   $("v-ficha").innerHTML = `
     <button class="back" onclick="setTab('operarios')">← Operarios</button>
     <div class="card" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
@@ -576,30 +614,57 @@ function renderFicha(){
       <button class="primary" onclick="NE={persona:'${o.key}',items:{}};setTab('nueva')">➕ Nueva entrega</button>
     </div>
     <div class="kpis">
-      <div class="kpi"><div class="l">Unidades ${anio}</div><div class="v acc">${uAnio}</div></div>
       <div class="kpi"><div class="l">Entregas totales</div><div class="v">${ents.length}</div></div>
       <div class="kpi"><div class="l">Última entrega</div><div class="v" style="font-size:18px">${ents.length?fFecha(ents[ents.length-1].fecha):"—"}</div></div>
-      <div class="kpi"><div class="l">Hoja actual</div><div class="v" style="font-size:18px">${hojas.length} · ${hojas[hojas.length-1].length}/${FILAS_POR_HOJA}</div></div>
+      <div class="kpi"><div class="l">Hojas impresas</div><div class="v">${hojas.filter(h=>h.cerrada).length}</div></div>
+      <div class="kpi"><div class="l">Renglones sin imprimir</div><div class="v ${renAb?"acc":""}">${renAb}</div></div>
     </div>
+
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
         <h3 style="margin:0">Planilla Res. 299/11</h3>
-        <div style="display:flex;gap:6px;flex-wrap:wrap"><button onclick="imprimirPlanilla('${o.key}')">🖨️ Imprimir</button><button onclick="compartirPlanilla('${o.key}')">📤 Compartir</button></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="primary" ${renAb?"":"disabled style='opacity:.5'"} onclick="imprimirCerrar('${o.key}')">🖨️ Imprimir y cerrar</button>
+          <button onclick="compartirPlanilla('${o.key}',${FICHA_HOJA})">📤 Compartir</button>
+        </div>
       </div>
-      ${hojas.length>1?`<div class="hojas">${hojas.map((h,i)=>`<button class="sm ${i===FICHA_HOJA?"on":""}" onclick="FICHA_HOJA=${i};renderFicha()">Hoja ${i+1}</button>`).join("")}</div>`:""}
+      <div class="hojas">${hojas.map((h,i)=>`<button class="sm ${i===FICHA_HOJA?"on":""}" onclick="FICHA_HOJA=${i};renderFicha()">Hoja ${h.num} ${h.cerrada?"✓":"•"}</button>`).join("")}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        ${hoja.cerrada ? `<span class="badge b-ok">✓ Impresa y cerrada el ${fFechaHora(hoja.cierre.ts)}</span><button class="sm" onclick="reimprimirHoja('${o.key}',${FICHA_HOJA})">🔁 Reimprimir</button>`
+                       : `<span class="badge b-warn">Abierta · sin imprimir</span>`}
+      </div>
       <div class="tscroll"><table class="tbl">
         <tr><th>#</th><th>Producto</th><th>Tipo / modelo</th><th>Marca</th><th>Cert.</th><th class="num">Cant.</th><th>Fecha</th><th>Firma</th><th></th></tr>
-        ${hoja.map((f,i)=>`<tr>
+        ${hoja.rows.map((f,i)=>`<tr>
           <td class="muted mono">${i+1}</td>
           <td>${emojiDe(f.it.producto)} ${esc(f.it.producto)}</td><td>${esc(f.it.tipo)}</td><td>${esc(f.it.marca)}</td>
           <td>${f.it.cert==="si"?"Sí":"No"}</td><td class="num">${esc(f.it.cantidad)}</td><td class="mono small">${fFecha(f.e.fecha)}</td>
           <td>${f.e.firmada ? (FIRMAS[f.e.id]?`<img class="firma-img" src="${FIRMAS[f.e.id]}" alt="Firma">`:`<span class="small muted">cargando…</span>`) : `<button class="sm" style="color:var(--acc);border-color:var(--acc)" onclick="abrirModalFirma('${f.e.id}')">✍️ Firmar</button>`}
             ${f.e.retira?`<div class="small muted">Retira: ${esc(f.e.retira)}</div>`:""}</td>
-          <td><button class="sm danger" title="Borrar entrega" onclick="borrarEntrega('${f.e.id}')">🗑</button></td>
+          <td>${hoja.cerrada?"":`<button class="sm danger" title="Borrar entrega" onclick="borrarEntrega('${f.e.id}')">🗑</button>`}</td>
         </tr>`).join("")}
-        ${libres>0?`<tr><td colspan="9" class="small muted" style="text-align:center">${libres===FILAS_POR_HOJA?"Hoja vacía · 9 renglones libres":libres===1?"1 renglón libre en esta hoja":`${libres} renglones libres en esta hoja`}</td></tr>`:""}
+        ${!hoja.cerrada&&libres>0?`<tr><td colspan="9" class="small muted" style="text-align:center">${libres===FILAS_POR_HOJA?`Hoja nueva · ${FILAS_POR_HOJA} renglones libres`:libres===1?"1 renglón libre":`${libres} renglones libres`}</td></tr>`:""}
       </table></div>
     </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <h3 style="margin:0">Historial de retiros</h3>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${selPeriodo("FI_ANIO","FI_MES",FI_ANIO,FI_MES,"renderFicha")}</div>
+      </div>
+      ${entsP.length ? `
+        <div class="small muted" style="margin-bottom:8px">${uPer} unidades ${textoPeriodo(FI_ANIO,FI_MES)}</div>
+        <div class="elems" style="margin-bottom:12px">${Object.entries(tot).sort((a,b)=>b[1]-a[1]).map(([pr,q])=>`<div class="elem"><span class="em">${emojiDe(pr)}</span><div><div class="n">${q}</div><div class="t">${esc(pr)}</div></div></div>`).join("")}</div>
+        ${entsP.map(e=>{ const h=enHoja[e.id]; return `<div class="li"><span><span class="mono small muted">${fFecha(e.fecha)}</span> &nbsp;${e.items.map(it=>`${emojiDe(it.producto)} ${esc(it.producto)}${n(it.cantidad)>1?" ×"+it.cantidad:""}`).join(", ")}${e.retira?` <span class="s">· retira ${esc(e.retira)}</span>`:""}</span>
+          <span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${e.firmada?"":`<span class="badge b-red">sin firma</span>`}${h?`<span class="badge ${h.cerrada?"b-ok":"b-warn"}">Hoja ${h.num}${h.cerrada?" ✓":""}</span>`:""}</span></div>`; }).join("")}`
+      : `<div class="empty"><span class="em">🗂️</span>Sin retiros ${textoPeriodo(FI_ANIO,FI_MES)}.</div>`}
+    </div>
+
+    <div class="card"><h3>Registro de impresiones y envíos</h3>
+      ${reg.length ? reg.map(r=>{ const t=TIPOS[r.tipo]||["•",r.tipo]; return `<div class="li"><span>${t[0]} ${t[1]} <span class="s">· hoja${String(r.hojas).includes(",")?"s":""} ${esc(r.hojas)} · ${r.renglones} renglones</span></span><span class="mono small muted">${fFechaHora(r.ts)}</span></div>`; }).join("")
+        : `<div class="small muted">Todavía no se imprimió ni envió ninguna hoja.</div>`}
+    </div>
+
     <div class="card"><h3>Datos para la planilla</h3>
       <div class="row">
         <div><label>DNI${o.codigo?` (termina en ${esc(o.codigo)})`:""}</label><input value="${esc(o.dni)}" placeholder="Sin puntos" inputmode="numeric" onchange="guardarFicha('${o.key}','dni',this.value.trim())"></div>
@@ -616,6 +681,8 @@ function renderFicha(){
 function guardarFicha(key, campo, valor){ db.ref(`${R}/fichas/${PLANTA}/${key}/${campo}`).set(valor===""?null:valor).then(()=>toast("Guardado")); }
 function borrarEntrega(id){
   const e = D[PLANTA].entregas[id]; if (!e) return;
+  const cerrada = Object.values(((D[PLANTA].cierres||{})[e.persona])||{}).some(c=>c.ids&&c.ids[id]);
+  if (cerrada) return toast("Esa entrega ya está en una hoja impresa; no se puede borrar", true);
   const det = e.items.map(it=>`${it.cantidad} ${it.producto}`).join(", ");
   if (!confirm(`¿Borrar la entrega del ${fFecha(e.fecha)} (${det})?\nSe borran todos sus renglones y la firma.`)) return;
   db.ref(`${R}/firmas/${PLANTA}/${id}`).remove(); db.ref(`${R}/entregas/${PLANTA}/${id}`).remove().then(()=>toast("Entrega borrada"));
@@ -638,50 +705,56 @@ async function guardarFirmaPendiente(){
 /* =========================================================
    DOCUMENTOS (planilla oficial y resumen)
    ========================================================= */
-async function docPlanilla(key){
+async function docPlanilla(key, hs){
   const p = PLANTA, o = personas(p)[key], C = CONFIG||{};
   await cargarFirmas(p, entregasDe(p,key));
-  const hojas = hojasDe(p,key);
   const N = t => `<span class="nn">(${t})</span>`;
-  const extras = entregasDe(p,key).filter(e=>e.retira||e.obs).map(e=>`${fFecha(e.fecha)}: ${e.retira?"retira "+esc(e.retira):""}${e.retira&&e.obs?" · ":""}${esc(e.obs||"")}`);
+  const ids = new Set(); hs.forEach(h=>h.rows.forEach(r=>ids.add(r.e.id)));
+  const extras = entregasDe(p,key).filter(e=>ids.has(e.id) && (e.retira||e.obs)).map(e=>`${fFecha(e.fecha)}: ${e.retira?"retira "+esc(e.retira):""}${e.retira&&e.obs?" · ":""}${esc(e.obs||"")}`);
   const info = [esc(o.info), ...extras].filter(Boolean).join(" — ");
-  const pags = hojas.map((h,hi)=>`
+  const pags = hs.map((h,hi)=>`
   <div class="hoja">
     <div class="perf">LUGAR PARA PERFORAR</div>
-    <div class="res">Resolución 299/11, Anexo I</div>
+    <div class="res"><span>Hoja ${h.num}</span><span>Resolución 299/11, Anexo I</span></div>
     <div class="tit">ENTREGA DE ROPA DE TRABAJO Y ELEMENTOS DE PROTECCIÓN PERSONAL</div>
-    <table class="enc"><tr><td style="width:70%">${N(1)} Razón Social: ${esc(C.razonSocial)}</td><td>${N(2)} C.U.I.T.: ${esc(C.cuit)}</td></tr></table>
-    <table class="enc"><tr><td style="width:34%">${N(3)} Domicilio: ${esc(C.domicilio)}</td><td style="width:24%">${N(4)} Localidad: ${esc(C.localidad)}</td><td style="width:14%">${N(5)} C.P.: ${esc(C.cp)}</td><td>${N(6)} Provincia: ${esc(C.provincia)}</td></tr></table>
-    <table class="enc"><tr><td style="width:70%">${N(7)} Nombre y Apellido del Trabajador: <b>${esc(o.nombre)}</b></td><td>${N(8)} D.N.I.: <b>${esc(o.dni)}</b></td></tr></table>
-    <table class="enc"><tr><td style="width:50%;height:22mm;vertical-align:top">${N(9)} Descripción breve del puesto/s de trabajo en el/los cuales se desempeña el trabajador: <b>${esc(o.puesto)}</b></td><td style="vertical-align:top">${N(10)} Elementos de protección personal, necesarios para el trabajador, según el puesto de trabajo: <b>${esc(o.necesarios||"TODOS LOS DETALLADOS ENTREGADOS")}</b></td></tr></table>
+    <table class="enc"><tr><td style="width:44%">${N(1)} Razón Social: ${esc(C.razonSocial)}</td><td style="width:22%">${N(2)} C.U.I.T.: ${esc(C.cuit)}</td><td>${N(7)} Nombre y Apellido del Trabajador: <b>${esc(o.nombre)}</b></td></tr></table>
+    <table class="enc"><tr><td style="width:24%">${N(3)} Domicilio: ${esc(C.domicilio)}</td><td style="width:14%">${N(4)} Localidad: ${esc(C.localidad)}</td><td style="width:9%">${N(5)} C.P.: ${esc(C.cp)}</td><td style="width:19%">${N(6)} Provincia: ${esc(C.provincia)}</td><td>${N(8)} D.N.I.: <b>${esc(o.dni)}</b></td></tr></table>
+    <table class="enc"><tr><td style="width:50%;height:9mm;vertical-align:top">${N(9)} Descripción breve del puesto/s de trabajo en el/los cuales se desempeña el trabajador: <b>${esc(o.puesto)}</b></td><td style="vertical-align:top">${N(10)} Elementos de protección personal, necesarios para el trabajador, según el puesto de trabajo: <b>${esc(o.necesarios||"TODOS LOS DETALLADOS ENTREGADOS")}</b></td></tr></table>
     <table class="det">
-      <tr><th style="width:5%"></th><th>${N(11)}<br>Producto</th><th>${N(12)}<br>Tipo / Modelo</th><th>${N(13)}<br>Marca</th><th style="width:10%">${N(14)}<br>Posee certificación SI / NO</th><th style="width:8%">${N(15)}<br>Cantidad</th><th style="width:11%">${N(16)}<br>Fecha de entrega</th><th style="width:22%">${N(17)}<br>Firma del trabajador</th></tr>
-      ${Array.from({length:FILAS_POR_HOJA},(_,i)=>{ const f=h[i]; return f?`<tr><td>${i+1}</td><td>${esc(f.it.producto)}</td><td>${esc(f.it.tipo)}</td><td>${esc(f.it.marca)}</td><td>${f.it.cert==="si"?"SI":"NO"}</td><td>${esc(f.it.cantidad)}</td><td>${fFecha(f.e.fecha)}</td><td class="fi">${FIRMAS[f.e.id]?`<img src="${FIRMAS[f.e.id]}">`:""}</td></tr>`:`<tr><td>${i+1}</td><td></td><td></td><td></td><td></td><td></td><td></td><td class="fi"></td></tr>`; }).join("")}
+      <colgroup><col style="width:3%"><col style="width:13%"><col style="width:12%"><col style="width:9%"><col style="width:7%"><col style="width:6%"><col style="width:8%"><col style="width:42%"></colgroup>
+      <tr><th></th><th>${N(11)} Producto</th><th>${N(12)} Tipo / Modelo</th><th>${N(13)} Marca</th><th>${N(14)} Posee cert. SI / NO</th><th>${N(15)} Cantidad</th><th>${N(16)} Fecha de entrega</th><th>${N(17)} Firma del trabajador</th></tr>
+      ${Array.from({length:FILAS_POR_HOJA},(_,i)=>{ const f=h.rows[i]; return f?`<tr><td>${i+1}</td><td>${esc(f.it.producto)}</td><td>${esc(f.it.tipo)}</td><td>${esc(f.it.marca)}</td><td>${f.it.cert==="si"?"SI":"NO"}</td><td>${esc(f.it.cantidad)}</td><td>${fFecha(f.e.fecha)}</td><td class="fi">${FIRMAS[f.e.id]?`<img src="${FIRMAS[f.e.id]}">`:""}</td></tr>`:`<tr><td>${i+1}</td><td></td><td></td><td></td><td></td><td></td><td></td><td class="fi"></td></tr>`; }).join("")}
     </table>
-    <div class="info">${N(18)} Información adicional: ${hi===hojas.length-1?info:""}</div>
-    <div class="pie">${esc(PLANTAS[p].nombre)} · Hoja ${hi+1} de ${hojas.length}</div>
+    <div class="info">${N(18)} Información adicional: ${hi===hs.length-1?info:""}</div>
+    <div class="pf">
+      <div class="blk"><div class="ln">Firma del trabajador</div><div class="ln">Aclaración</div><div class="ln" style="flex:.6">Fecha</div></div>
+      <div class="blk"><div class="ln">Firma del responsable</div><div class="ln">Aclaración</div></div>
+    </div>
   </div>`).join("");
   return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Planilla EPP · ${esc(o.nombre)}</title><style>
-  @page{size:A4;margin:10mm}
-  body{margin:0;font-family:Arial,Helvetica,sans-serif;font-size:10.5px;color:#000;background:#e9e9e9}
-  .hoja{background:#fff;width:190mm;min-height:270mm;margin:10px auto;border:1px solid #000;page-break-after:always;position:relative}
+  @page{size:A4 landscape;margin:7mm}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Arial,Helvetica,sans-serif;font-size:9.5px;color:#000;background:#e9e9e9;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .hoja{background:#fff;width:283mm;height:196mm;margin:10px auto;border:1px solid #000;page-break-after:always;display:flex;flex-direction:column;overflow:hidden}
   .hoja:last-child{page-break-after:auto}
-  .perf{height:24mm;text-align:center;font-size:12px;padding-top:2mm;border-bottom:1px solid #000}
-  .res{text-align:right;font-family:Georgia,serif;font-style:italic;font-weight:bold;padding:2px 6px;font-size:11px}
-  .tit{background:#000;color:#fff;text-align:center;font-weight:bold;font-size:12.5px;padding:4px}
-  table{width:100%;border-collapse:collapse}
-  .enc td{border:1px solid #000;padding:4px 5px}
-  .nn{color:#1f5fa8;font-size:8px;vertical-align:super}
-  .det{margin-top:6mm}
-  .det th{border:1px solid #000;font-weight:normal;padding:3px;font-size:10px;background:#f2f2f2}
-  .det td{border:1px solid #000;text-align:center;height:11mm;padding:1px 3px}
-  .det td.fi img{max-height:10mm;max-width:100%}
-  .info{border:1px solid #000;border-top:none;min-height:30mm;padding:4px 5px}
-  .pie{position:absolute;bottom:2mm;right:4mm;font-size:8.5px;color:#666}
-  @media print{body{background:#fff}.hoja{margin:0;border:1px solid #000}}
+  .perf{height:9mm;text-align:center;font-size:9.5px;padding-top:1mm;border-bottom:1px solid #000;flex:none}
+  .res{display:flex;justify-content:space-between;font-family:Georgia,serif;font-style:italic;font-weight:bold;padding:1px 6px;font-size:10px;flex:none}
+  .tit{background:#000;color:#fff;text-align:center;font-weight:bold;font-size:11px;padding:2px;flex:none}
+  table{width:100%;border-collapse:collapse;flex:none}
+  .enc td{border:1px solid #000;padding:2px 4px;height:5.5mm}
+  .nn{color:#1f5fa8;font-size:7px;vertical-align:super}
+  .det{margin-top:2mm;table-layout:fixed}
+  .det th{border:1px solid #000;font-weight:normal;padding:1px 2px;font-size:8.5px;background:#f2f2f2;height:7mm}
+  .det td{border:1px solid #000;text-align:center;height:7.8mm;padding:0 2px;overflow:hidden;white-space:nowrap}
+  .det td.fi{padding:0.3mm}
+  .det td.fi img{display:block;width:100%;height:7.1mm;object-fit:fill}
+  .info{border:1px solid #000;border-top:none;flex:1;min-height:6mm;padding:2px 4px}
+  .pf{display:flex;gap:10mm;padding:0 6mm 2.5mm;height:17mm;align-items:flex-end;border-top:1px solid #000;flex:none}
+  .blk{flex:1;display:flex;gap:5mm}
+  .ln{flex:1;border-top:1px solid #000;font-size:8.5px;text-align:center;padding-top:1px}
+  @media print{body{background:#fff}.hoja{margin:0}}
   </style></head><body>${pags}</body></html>`;
 }
-
 function docResumen(anio){
   const p = PLANTA, ents = Object.values(D[p].entregas).filter(e=>+e.fecha.slice(0,4)===+anio);
   const prods = {}, sect = {}, ops = {};
@@ -709,35 +782,60 @@ function docResumen(anio){
   </body></html>`;
 }
 
-function imprimirHTML(html){
+function abrirVentana(){
   const w = window.open("", "_blank");
-  if (!w) return toast("Permití las ventanas emergentes para imprimir", true);
-  w.document.open(); w.document.write(html); w.document.close();
-  setTimeout(()=>{ w.focus(); w.print(); }, 700);
+  if (!w){ toast("Permití las ventanas emergentes para imprimir", true); return null; }
+  w.document.write("<p style='font-family:Arial;padding:20px'>Preparando planilla…</p>"); return w;
 }
+function escribirEImprimir(w, html){ w.document.open(); w.document.write(html); w.document.close(); setTimeout(()=>{ w.focus(); w.print(); }, 700); }
+function imprimirHTML(html){ const w = abrirVentana(); if (w) escribirEImprimir(w, html); }
 async function compartirHTML(html, nombre){
   try {
     const zip = new JSZip(); zip.file(nombre+".html", html);
     const blob = await zip.generateAsync({type:"blob"});
     const file = new File([blob], nombre+".zip", {type:"application/zip"});
     if (navigator.canShare && navigator.canShare({files:[file]})) {
-      try { await navigator.share({files:[file], title:nombre}); return; } catch(e){ if (e.name==="AbortError") return; }
+      try { await navigator.share({files:[file], title:nombre}); return true; } catch(e){ if (e.name==="AbortError") return false; }
     }
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nombre+".zip"; a.click();
-    toast("Archivo descargado");
-  } catch(e){ toast("No se pudo generar el archivo", true); }
+    toast("Archivo descargado"); return true;
+  } catch(e){ toast("No se pudo generar el archivo", true); return false; }
 }
 const nombreArchivo = s => String(s).normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Za-z0-9]+/g,"_").replace(/^_|_$/g,"");
-async function imprimirPlanilla(key){ toast("Preparando planilla…"); imprimirHTML(await docPlanilla(key)); }
-async function compartirPlanilla(key){ const o=personas(PLANTA)[key]; toast("Preparando planilla…"); compartirHTML(await docPlanilla(key), "Planilla_EPP_"+nombreArchivo(o.nombre)); }
-
+function registrar(key, tipo, hs){ return db.ref(`${R}/registro/${PLANTA}/${key}`).push({ ts:Date.now(), tipo, hojas:hs.map(h=>h.num).join(", "), renglones:hs.reduce((a,h)=>a+h.rows.length,0) }); }
+async function imprimirCerrar(key){
+  const hs = hojasDe(PLANTA,key).filter(h=>!h.cerrada && h.rows.length);
+  if (!hs.length) return toast("No hay renglones nuevos para imprimir", true);
+  const ren = hs.reduce((a,h)=>a+h.rows.length,0), nums = hs.map(h=>h.num).join(", "), pl = hs.length>1;
+  if (!confirm(`Se imprime${pl?"n las hojas":" la hoja"} ${nums} (${ren} renglones) y se cierra${pl?"n":""}.\nLas próximas entregas irán en una hoja nueva.\n\n¿Continuar?`)) return;
+  const w = abrirVentana(); if (!w) return;
+  const html = await docPlanilla(key, hs);
+  const ids = {}; hs.forEach(h=>h.rows.forEach(r=>ids[r.e.id]=true));
+  await db.ref(`${R}/cierres/${PLANTA}/${key}`).push({ ts:Date.now(), ids });
+  await registrar(key, "impresion", hs);
+  escribirEImprimir(w, html); toast(pl?"Hojas cerradas":"Hoja cerrada");
+}
+async function reimprimirHoja(key, idx){
+  const hs = grupoHojas(hojasDe(PLANTA,key), idx);
+  const w = abrirVentana(); if (!w) return;
+  const html = await docPlanilla(key, hs);
+  await registrar(key, "reimpresion", hs);
+  escribirEImprimir(w, html);
+}
+async function compartirPlanilla(key, idx){
+  const hs = grupoHojas(hojasDe(PLANTA,key), idx).filter(h=>h.rows.length);
+  if (!hs.length) return toast("Esta hoja todavía no tiene renglones", true);
+  const o = personas(PLANTA)[key]; toast("Preparando planilla…");
+  const ok = await compartirHTML(await docPlanilla(key, hs), `Planilla_EPP_${nombreArchivo(o.nombre)}_hoja_${hs.map(h=>h.num).join("-")}`);
+  if (ok) registrar(key, "envio", hs);
+}
 /* =========================================================
    ESTADÍSTICAS
    ========================================================= */
 function renderEstad(){
   const p = PLANTA, aniosL = anios(p);
   const ents = Object.values(D[p].entregas);
-  const delAnio = ents.filter(e=>+e.fecha.slice(0,4)===+ESTAD_ANIO);
+  const delAnio = ents.filter(e=>ESTAD_MODO==="mes" ? +e.fecha.slice(0,4)===+ESTAD_ANIO : enPeriodo(e,ESTAD_ANIO,ESTAD_MES));
   let cuerpo = "";
   if (ESTAD_MODO==="mes"){
     const prods={}; delAnio.forEach(e=>e.items.forEach(it=>{ (prods[it.producto]=prods[it.producto]||Array(12).fill(0))[+e.fecha.slice(5,7)-1]+=n(it.cantidad); }));
@@ -755,26 +853,26 @@ function renderEstad(){
       ${Object.entries(prods).map(([pr,o])=>`<tr><td>${emojiDe(pr)} ${esc(pr)}</td>${ys.map(y=>`<td class="num">${o[y]||"·"}</td>`).join("")}</tr>`).join("")}
       <tr><td style="font-weight:700">Total</td>${ys.map(y=>`<td class="num" style="font-weight:700;color:var(--acc)">${Object.values(prods).reduce((a,o)=>a+(o[y]||0),0)}</td>`).join("")}</tr></table></div></div>
       <div class="card"><h3>Gráfico por año</h3><div style="position:relative;height:260px"><canvas id="ch-es"></canvas></div></div>` : vacioEstad();
-    if (Object.keys(prods).length) setTimeout(()=>dibujar("ch-es",{type:"bar",data:{labels:ys.map(String),datasets:Object.entries(prods).map(([pr,o],i)=>({label:pr,data:ys.map(y=>o[y]||0),backgroundColor:CHART_COLORS[i%CHART_COLORS.length],borderRadius:3}))},options:opcionesChart(true)}));
+    if (Object.keys(prods).length) setTimeout(()=>dibujar("ch-es",{type:"bar",data:{labels:ys.map(String),datasets:Object.entries(prods).map(([pr,o],i)=>({label:pr,data:ys.map(y=>o[y]||0),backgroundColor:CHART_COLORS[i%CHART_COLORS.length],borderRadius:3}))},options:opcionesChart(false)}));
   }
   if (ESTAD_MODO==="sector"){
     const s={}; delAnio.forEach(e=>e.items.forEach(it=>{ const o=s[e.sector]=s[e.sector]||{t:0,p:{}}; o.t+=n(it.cantidad); o.p[it.producto]=(o.p[it.producto]||0)+n(it.cantidad); }));
     const max=Math.max(1,...Object.values(s).map(o=>o.t));
-    cuerpo = Object.keys(s).length ? `<div class="card"><h3>Unidades por sector · ${ESTAD_ANIO}</h3>${Object.entries(s).sort((a,b)=>b[1].t-a[1].t).map(([k,o])=>`
+    cuerpo = Object.keys(s).length ? `<div class="card"><h3>Unidades por sector ${textoPeriodo(ESTAD_ANIO,ESTAD_MES)}</h3>${Object.entries(s).sort((a,b)=>b[1].t-a[1].t).map(([k,o])=>`
       <div style="margin:12px 0"><div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:5px"><b>${esc(k)}</b><span class="mono">${o.t}</span></div>
       <div class="bar"><i style="width:${Math.round(100*o.t/max)}%"></i></div>
       <div class="small muted" style="margin-top:5px">${Object.entries(o.p).sort((a,b)=>b[1]-a[1]).map(([pr,q])=>`${emojiDe(pr)} ${esc(pr)} ${q}`).join(" &nbsp; ")}</div></div>`).join("")}</div>` : vacioEstad();
   }
   if (ESTAD_MODO==="operario"){
     const o={}; delAnio.forEach(e=>{ const x=o[e.persona]=o[e.persona]||{nombre:e.nombre,sector:e.sector,u:0,ent:0,p:{}}; x.ent++; e.items.forEach(it=>{ x.u+=n(it.cantidad); x.p[it.producto]=(x.p[it.producto]||0)+n(it.cantidad); }); });
-    cuerpo = Object.keys(o).length ? `<div class="card"><h3>Por operario · ${ESTAD_ANIO}</h3>${Object.entries(o).sort((a,b)=>b[1].u-a[1].u).map(([k,x])=>`
+    cuerpo = Object.keys(o).length ? `<div class="card"><h3>Por operario ${textoPeriodo(ESTAD_ANIO,ESTAD_MES)}</h3>${Object.entries(o).sort((a,b)=>b[1].u-a[1].u).map(([k,x])=>`
       <div class="op" onclick="abrirFicha('${k}')">${avatar(x.nombre)}<div><div class="nm">${esc(x.nombre)}</div><div class="s">${esc(x.sector)} · ${x.ent} entrega${x.ent>1?"s":""}</div></div>
       <div class="r" style="align-items:center"><span class="small">${Object.entries(x.p).map(([pr,q])=>`${emojiDe(pr)}${q}`).join(" ")}</span><span class="badge b-ok">${x.u} u.</span></div></div>`).join("")}</div>` : vacioEstad();
   }
   $("v-estad").innerHTML = `
     <div class="sub-tabs">${[["mes","Mes a mes"],["anio","Año a año"],["sector","Por sector"],["operario","Por operario"]].map(([k,t])=>`<button class="${ESTAD_MODO===k?"on":""}" onclick="ESTAD_MODO='${k}';renderEstad()">${t}</button>`).join("")}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
-      ${ESTAD_MODO!=="anio"?`<select style="width:auto" onchange="ESTAD_ANIO=+this.value;renderEstad()">${aniosL.map(a=>`<option ${a==ESTAD_ANIO?"selected":""}>${a}</option>`).join("")}</select>`:""}
+      ${ESTAD_MODO==="sector"||ESTAD_MODO==="operario"?selPeriodo("ESTAD_ANIO","ESTAD_MES",ESTAD_ANIO,ESTAD_MES,"renderEstad"):""}${ESTAD_MODO==="mes"?`<select style="width:auto" onchange="ESTAD_ANIO=+this.value;renderEstad()">${aniosL.map(a=>`<option ${a==ESTAD_ANIO?"selected":""}>${a}</option>`).join("")}</select>`:""}
       <span style="flex:1"></span>
       <button onclick="imprimirHTML(docResumen(${ESTAD_ANIO}))">🖨️ Imprimir resumen ${ESTAD_ANIO}</button>
       <button onclick="compartirHTML(docResumen(${ESTAD_ANIO}),'Resumen_EPP_${PLANTAS[PLANTA].corto}_${ESTAD_ANIO}')">📤 Compartir</button>
