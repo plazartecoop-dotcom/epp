@@ -106,7 +106,7 @@ button.sm{padding:5px 10px;font-size:12px}
 .toast.err{background:var(--red);color:#fff}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
 .modal.show{display:flex}
-.modal .card{width:100%;max-width:560px;margin:0}
+.modal .card{width:100%;max-width:560px;margin:0;max-height:88vh;overflow:auto}
 .hide{display:none!important}
 .back{margin-bottom:12px}
 .muted{color:var(--muted)}
@@ -120,7 +120,7 @@ button.sm{padding:5px 10px;font-size:12px}
 <div class="wrap">
   <div class="brand">
     <div class="sub">Cooperativa Agropecuaria de Tandil</div>
-    <div class="title">Entrega de elementos de protección personal</div>
+    <div class="title" id="br-title">Entrega de elementos de protección personal</div>
     <div class="pl" id="pl-nombre"></div>
   </div>
   <div class="switch">
@@ -132,6 +132,8 @@ button.sm{padding:5px 10px;font-size:12px}
     <button data-t="nueva" onclick="setTab('nueva')">➕ Nueva entrega</button>
     <button data-t="operarios" onclick="setTab('operarios')">👷 Operarios</button>
     <button data-t="estad" onclick="setTab('estad')">📈 Estadísticas</button>
+    <button data-t="stock" onclick="setTab('stock')">📦 Stock</button>
+    <button data-t="pedidos" onclick="setTab('pedidos')">👕 Pedidos</button>
     <button data-t="config" onclick="setTab('config')">⚙️ Configuración</button>
   </nav>
 
@@ -203,6 +205,16 @@ button.sm{padding:5px 10px;font-size:12px}
 
   <!-- CONFIGURACIÓN -->
   <section id="v-config" class="hide"></section>
+  <section id="v-stock" class="hide"></section>
+  <section id="v-pedidos" class="hide"></section>
+  <section id="v-login" class="hide">
+    <div class="card" style="max-width:360px;margin:30px auto;text-align:center">
+      <div style="font-size:34px">🔒</div><h3 style="margin:10px 0 14px">Acceso</h3>
+      <input type="password" id="lg-pass" placeholder="Clave" onkeydown="if(event.key==='Enter')loginAdmin()">
+      <button class="primary" style="width:100%;margin-top:10px" onclick="loginAdmin()">Entrar</button>
+    </div>
+  </section>
+  <section id="v-op" class="hide"></section>
 </div>
 
 <datalist id="dl-sectores"></datalist>
@@ -217,6 +229,27 @@ button.sm{padding:5px 10px;font-size:12px}
       <button onclick="padMF.limpiar()">Borrar</button>
       <div style="display:flex;gap:8px"><button onclick="cerrarModalFirma()">Cancelar</button><button class="primary" onclick="guardarFirmaPendiente()">Guardar firma</button></div>
     </div>
+  </div>
+</div>
+
+<!-- Modal de detalle -->
+<div class="modal" id="m-detalle" onclick="if(event.target===this)this.classList.remove('show')">
+  <div class="card" style="max-width:820px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <h3 id="md-titulo" style="margin:0"></h3>
+      <div style="display:flex;gap:6px"><button class="sm" onclick="exportar('md-cont',false)">🖨️ Imprimir</button><button class="sm" onclick="exportar('md-cont',true)">📤 Compartir</button><button class="sm" onclick="$('m-detalle').classList.remove('show')">Cerrar</button></div>
+    </div>
+    <div id="md-cont"></div>
+  </div>
+</div>
+
+<!-- Modal de pedido (carga / modificación por el administrador) -->
+<div class="modal" id="m-pedido">
+  <div class="card" style="max-width:620px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px">
+      <h3 id="mp-titulo" style="margin:0"></h3><button class="sm" onclick="cerrarModalPedido()">Cerrar</button>
+    </div>
+    <div id="mp-cont"></div>
   </div>
 </div>
 
@@ -254,14 +287,26 @@ const AV_COLORS = [["#4a3a1e","#e8a33d"],["#1d3550","#7fb0e0"],["#17352c","#6fcc
    ESTADO
    ========================================================= */
 const D = {};
-Object.keys(PLANTAS).forEach(p => D[p] = { he:{}, extras:{}, fichas:{}, entregas:{}, cierres:{}, registro:{} });
+Object.keys(PLANTAS).forEach(p => D[p] = { he:{}, extras:{}, fichas:{}, entregas:{}, cierres:{}, registro:{}, kits:{}, pedidos:{} });
 let CATALOGO = {}, CONFIG = null;
 let PLANTA = "balanceados";
 try { PLANTA = localStorage.getItem("epp_planta") || "balanceados"; } catch(e){}
 if (!PLANTAS[PLANTA]) PLANTA = "balanceados";
 let TAB = "tablero";
 let FICHA = null, FICHA_HOJA = null;
-let NE = { persona:null, items:{} };
+let NE = { persona:null, items:[] };
+const MODO_PEDIDO = new URLSearchParams(location.search).get("pedido");
+const CLAVE = "epp2026";
+let STOCKMOV = {}, PCFG = {};
+const LISTO = { he:{}, ped:{}, kits:{} };
+const DET = [];
+let ST_ANIO = new Date().getFullYear(), ST_MES = "todo", ST_FORM = null, ST_F = {};
+let PED_SEL = null, PED_NUEVO = false, FORM = null, OP_EDIT = false;
+const T_PANT="38,40,42,44,46,48,50,52,54,56,58,60", T_ROPA="S,M,L,XL,XXL,XXXL", T_CALZ="35,36,37,38,39,40,41,42,43,44,45,46";
+const ESPECIF = {
+  balanceados: 'Pantalón y camisa color beige. Remera y buzo color gris. Guardapolvo blanco.\nBordado en camisa, remera, buzo y guardapolvo: "Alimentos Balanceados Tandilcoop".',
+  aceitera: 'Pantalón y camisa color beige. Remera y buzo color azul.\nBordado en camisa, remera y buzo: "Aceitera Coopagro".'
+};
 let ESTAD_MODO = "mes", ESTAD_ANIO = new Date().getFullYear(), TB_ANIO = new Date().getFullYear(), TB_MES = "todo";
 let VER_INACTIVOS = false;
 const ANIO_ACT = new Date().getFullYear();
@@ -293,7 +338,9 @@ let pend = null;
 function refrescar(){ clearTimeout(pend); pend = setTimeout(renderActual, 60); }
 
 Object.keys(PLANTAS).forEach(p => {
-  db.ref(PLANTAS[p].he + "/personal").on("value", s => { D[p].he = s.val()||{}; refrescar(); });
+  db.ref(PLANTAS[p].he + "/personal").on("value", s => { D[p].he = s.val()||{}; LISTO.he[p]=true; refrescar(); });
+  db.ref(`${R}/pedidos/${p}`).on("value", s => { D[p].pedidos = s.val()||{}; LISTO.ped[p]=true; refrescar(); });
+  db.ref(`${R}/kits/${p}`).on("value", s => { if (!s.exists()) { sembrarKits(p); return; } D[p].kits = s.val(); LISTO.kits[p]=true; refrescar(); });
   db.ref(`${R}/extras/${p}`).on("value", s => { D[p].extras = s.val()||{}; refrescar(); });
   db.ref(`${R}/fichas/${p}`).on("value", s => { D[p].fichas = s.val()||{}; refrescar(); });
   db.ref(`${R}/cierres/${p}`).on("value", s => { D[p].cierres = s.val()||{}; refrescar(); });
@@ -305,11 +352,16 @@ Object.keys(PLANTAS).forEach(p => {
 });
 db.ref(R + "/catalogo").on("value", s => {
   if (!s.exists()) { sembrarCatalogo(); return; }
-  CATALOGO = s.val(); refrescar();
+  CATALOGO = s.val(); checkMigr(); refrescar();
+});
+db.ref(R + "/stock").on("value", s => { STOCKMOV = s.val()||{}; refrescar(); });
+db.ref(R + "/pedidosCfg").on("value", s => {
+  if (!s.exists()) { db.ref(R+"/pedidosCfg").set({ balanceados:{especif:ESPECIF.balanceados}, aceitera:{especif:ESPECIF.aceitera} }); return; }
+  PCFG = s.val(); refrescar();
 });
 db.ref(R + "/config").on("value", s => {
   if (!s.exists()) { sembrarConfig(); return; }
-  CONFIG = s.val(); refrescar();
+  CONFIG = s.val(); checkMigr(); refrescar();
 });
 
 function sembrarCatalogo(){
@@ -355,27 +407,49 @@ function alertas(p){
   Object.entries(sf).forEach(([k,v])=>out.push({cls:"b-red",txt:`✍️ ${v.nombre}`,badge:v.n===1?"1 sin firma":`${v.n} sin firma`,persona:k}));
   const per=personas(p); const sinDni=Object.values(per).filter(o=>!o.dni && Object.values(D[p].entregas).some(e=>e.persona===o.key));
   sinDni.forEach(o=>out.push({cls:"b-warn",txt:`🪪 ${o.nombre}`,badge:"falta DNI",persona:o.key}));
+  const st=stockActual();
+  catOrden(false).filter(([,c])=>c.stock).forEach(([k,c])=>{ const min=n(c.minimo); const tl=tallesDe(c);
+    (tl.length?tl:[""]).forEach(t=>{ const q=st[k+"|"+t]||0; const nom=`📦 ${c.producto}${t?" T "+t:""}`;
+      if (q<=0) out.push({cls:"b-red",txt:nom,badge:"sin stock",ir:"stock"});
+      else if (min && q<=min) out.push({cls:"b-warn",txt:nom,badge:`quedan ${q}`,ir:"stock"}); }); });
+  const pend=Object.values(D[p].pedidos).reduce((a,x)=>a+Object.values(x.resp||{}).filter(r=>r.estado!=="aprobado").length,0);
+  if (pend) out.push({cls:"b-warn",txt:"👕 Pedidos de ropa",badge:`${pend} por aprobar`,ir:"pedidos"});
   return out;
 }
-
 /* =========================================================
    NAVEGACIÓN
    ========================================================= */
 function setPlanta(p){
   PLANTA = p; try{ localStorage.setItem("epp_planta",p); }catch(e){}
-  NE = { persona:null, items:{} }; FICHA = null;
+  NE = { persona:null, items:[] }; FICHA = null; PED_SEL = null; PED_NUEVO = false;
   if (TAB==="ficha") TAB="operarios";
   renderActual();
 }
-function setTab(t){ TAB = t; FICHA = null; renderActual(); window.scrollTo(0,0); }
+function setTab(t){ TAB = t; FICHA = null; $("m-detalle").classList.remove("show"); renderActual(); window.scrollTo(0,0); }
 function abrirFicha(key){ FICHA = key; FICHA_HOJA = null; TAB = "ficha"; renderActual(); window.scrollTo(0,0); }
 
+function autorizado(){ try { return localStorage.getItem("epp_auth")==="ok"; } catch(e){ return false; } }
+function loginAdmin(){
+  if ($("lg-pass").value.trim()!==CLAVE) return toast("Clave incorrecta", true);
+  try { localStorage.setItem("epp_auth","ok"); } catch(e){}
+  renderActual();
+}
+const VISTAS = ["tablero","nueva","operarios","ficha","estad","stock","pedidos","config","login","op"];
+function mostrar(v){ VISTAS.forEach(x=>$("v-"+x).classList.toggle("hide",x!==v)); }
 function renderActual(){
-  document.body.dataset.planta = PLANTA;
-  $("pl-nombre").textContent = PLANTAS[PLANTA].nombre;
+  DET.length = 0;
+  const sw = document.querySelector(".switch"), tb = document.querySelector(".tabs");
+  if (MODO_PEDIDO){
+    const p = PLANTAS[MODO_PEDIDO] ? MODO_PEDIDO : "balanceados";
+    document.body.dataset.planta = p; $("pl-nombre").textContent = PLANTAS[p].nombre; $("br-title").textContent = "Pedido de ropa de trabajo";
+    sw.style.display = "none"; tb.style.display = "none"; mostrar("op"); renderOperarioPedido(); return;
+  }
+  document.body.dataset.planta = PLANTA; $("pl-nombre").textContent = PLANTAS[PLANTA].nombre;
+  if (!autorizado()){ sw.style.display="none"; tb.style.display="none"; mostrar("login"); return; }
+  sw.style.display=""; tb.style.display="";
   document.querySelectorAll(".switch button").forEach(b=>b.classList.toggle("on",b.dataset.p===PLANTA));
   document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===TAB || (TAB==="ficha"&&b.dataset.t==="operarios")));
-  ["tablero","nueva","operarios","ficha","estad","config"].forEach(v=>$("v-"+v).classList.toggle("hide",v!==TAB));
+  mostrar(TAB);
   $("dl-sectores").innerHTML = sectoresPlanta(PLANTA).map(s=>`<option value="${esc(s)}">`).join("");
   if (!CONFIG || !Object.keys(CATALOGO).length) return;
   if (TAB==="tablero") renderTablero();
@@ -383,58 +457,61 @@ function renderActual(){
   if (TAB==="operarios") renderOperarios();
   if (TAB==="ficha") renderFicha();
   if (TAB==="estad") renderEstad();
+  if (TAB==="stock") renderStock();
+  if (TAB==="pedidos") renderPedidos();
   if (TAB==="config") renderConfig();
 }
-
 /* =========================================================
    TABLERO
    ========================================================= */
+function det(f){ return `onclick="verDetalleN(${DET.push(f)-1})" style="cursor:pointer" title="Ver detalle"`; }
 function renderTablero(){
   const p = PLANTA, ent = Object.values(D[p].entregas).filter(e=>enPeriodo(e,TB_ANIO,TB_MES));
   let unidades=0, sinFirma=0; const porProd={}, ops=new Set();
   ent.forEach(e=>{ ops.add(e.persona); if(!e.firmada) sinFirma++; e.items.forEach(it=>{ unidades+=n(it.cantidad); porProd[it.producto]=(porProd[it.producto]||0)+n(it.cantidad); }); });
-  const per = TB_MES==="todo" ? `en ${TB_ANIO}` : `en ${MESES_L[TB_MES-1].toLowerCase()} ${TB_ANIO}`;
+  const per = textoPeriodo(TB_ANIO,TB_MES), base = {anio:TB_ANIO, mes:TB_MES};
   const elems = Object.entries(porProd).sort((a,b)=>b[1]-a[1]);
   const al = alertas(p);
-  const ult = entregasOrden(p).slice(-8).reverse();
+  const ult = entregasOrden(p).filter(e=>enPeriodo(e,TB_ANIO,TB_MES)).slice(-10).reverse();
   $("v-tablero").innerHTML = `
-    <div class="row" style="margin-bottom:14px;max-width:420px">
-      <select onchange="TB_ANIO=+this.value;renderTablero()">${anios(p).map(a=>`<option ${a==TB_ANIO?"selected":""}>${a}</option>`).join("")}</select>
-      <select onchange="TB_MES=this.value;renderTablero()"><option value="todo">Todo el año</option>${MESES_L.map((m,i)=>`<option value="${i+1}" ${TB_MES==i+1?"selected":""}>${m}</option>`).join("")}</select>
-    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">${selPeriodo("TB_ANIO","TB_MES",TB_ANIO,TB_MES,"renderTablero")}<span style="flex:1"></span><button onclick="exportar('tb-cont',false)">🖨️ Imprimir</button><button onclick="exportar('tb-cont',true)">📤 Compartir</button></div>
+    <div id="tb-cont" data-titulo="Tablero ${per}">
     <div class="kpis">
-      <div class="kpi"><div class="l">Unidades entregadas</div><div class="v acc">${unidades}</div></div>
-      <div class="kpi"><div class="l">Entregas</div><div class="v">${ent.length}</div></div>
-      <div class="kpi"><div class="l">Operarios atendidos</div><div class="v">${ops.size}</div></div>
-      <div class="kpi"><div class="l">Sin firmar</div><div class="v" style="color:${sinFirma?"var(--red)":"var(--green)"}">${sinFirma}</div></div>
+      <div class="kpi" ${det({...base,titulo:"Unidades entregadas "+per})}><div class="l">Unidades entregadas</div><div class="v acc">${unidades}</div></div>
+      <div class="kpi" ${det({...base,titulo:"Entregas "+per})}><div class="l">Entregas</div><div class="v">${ent.length}</div></div>
+      <div class="kpi" ${det({...base,titulo:"Entregas "+per})}><div class="l">Operarios atendidos</div><div class="v">${ops.size}</div></div>
+      <div class="kpi" ${det({...base,sinFirma:true,titulo:"Entregas sin firmar "+per})}><div class="l">Sin firmar</div><div class="v" style="color:${sinFirma?"var(--red)":"var(--green)"}">${sinFirma}</div></div>
     </div>
     <div class="card"><h3>Elementos entregados ${per}</h3>
-      ${elems.length ? `<div class="elems">${elems.map(([pr,q])=>`<div class="elem"><span class="em">${emojiDe(pr)}</span><div><div class="n">${q}</div><div class="t">${esc(pr)}</div></div></div>`).join("")}</div>`
-      : `<div class="empty"><span class="em">🧤</span>Todavía no hay entregas ${per}.<br><button class="primary" style="margin-top:10px" onclick="setTab('nueva')">Cargar la primera</button></div>`}
+      ${elems.length ? `<div class="elems">${elems.map(([pr,q])=>`<div class="elem" ${det({...base,producto:pr,titulo:`${pr} ${per}`})}><span class="em">${emojiDe(pr)}</span><div><div class="n">${q}</div><div class="t">${esc(pr)}</div></div></div>`).join("")}</div>`
+      : `<div class="empty"><span class="em">🧤</span>Todavía no hay entregas ${per}.<br><button class="primary" style="margin-top:10px" onclick="setTab('nueva')">Cargar una entrega</button></div>`}
     </div>
     <div class="card"><h3>Mes a mes · ${TB_ANIO}</h3><div style="position:relative;height:250px"><canvas id="ch-tb"></canvas></div></div>
     <div class="two">
       <div class="card"><h3>Para revisar</h3>
-        ${al.length ? al.map(a=>`<div class="li" style="cursor:pointer" onclick="abrirFicha('${a.persona}')"><span>${esc(a.txt)}</span><span class="badge ${a.cls}">${a.badge}</span></div>`).join("") : `<div class="empty"><span class="em">✅</span>Todo en orden.</div>`}
+        ${al.length ? al.map(a=>`<div class="li" style="cursor:pointer" onclick="${a.persona?`abrirFicha('${a.persona}')`:`setTab('${a.ir}')`}"><span>${esc(a.txt)}</span><span class="badge ${a.cls}">${a.badge}</span></div>`).join("") : `<div class="empty"><span class="em">✅</span>Todo en orden.</div>`}
       </div>
-      <div class="card"><h3>Últimas entregas</h3>
-        ${ult.length ? ult.map(e=>`<div class="li" style="cursor:pointer" onclick="abrirFicha('${e.persona}')"><span><span class="mono small muted">${fCorta(e.fecha)}</span> &nbsp;${esc(e.nombre)}</span><span>${e.items.map(it=>emojiDe(it.producto)+(n(it.cantidad)>1?"×"+it.cantidad:"")).join(" ")}</span></div>`).join("") : `<div class="empty">Sin entregas cargadas.</div>`}
+      <div class="card"><h3>Últimas entregas ${per}</h3>
+        ${ult.length ? ult.map(e=>`<div class="li" style="cursor:pointer" onclick="abrirFicha('${e.persona}')"><span><span class="mono small muted">${fCorta(e.fecha)}</span> &nbsp;${esc(e.nombre)}</span><span>${e.items.map(it=>emojiDe(it.producto)+(n(it.cantidad)>1?"×"+it.cantidad:"")).join(" ")}</span></div>`).join("") : `<div class="empty">Sin entregas en este período.</div>`}
       </div>
+    </div>
     </div>`;
   graficoMensual("ch-tb", p, TB_ANIO);
 }
-
 function graficoMensual(id, p, anio){
   const prods = {};
   Object.values(D[p].entregas).filter(e=>+e.fecha.slice(0,4)===+anio).forEach(e=>e.items.forEach(it=>{
     prods[it.producto]=prods[it.producto]||Array(12).fill(0); prods[it.producto][+e.fecha.slice(5,7)-1]+=n(it.cantidad);
   }));
   const ds = Object.entries(prods).map(([pr,v],i)=>({label:pr,data:v,backgroundColor:CHART_COLORS[i%CHART_COLORS.length],borderRadius:3}));
-  dibujar(id,{type:"bar",data:{labels:MESES,datasets:ds},options:opcionesChart(false)});
+  dibujar(id,{type:"bar",data:{labels:MESES,datasets:ds},options:opcionesChart(false,(ev,els,ch)=>{
+    if(!els.length) return; const pr=ch.data.datasets[els[0].datasetIndex].label, m=els[0].index+1;
+    verDetalle({titulo:`${pr} · ${MESES_L[m-1]} ${anio}`,producto:pr,anio,mes:m});
+  })});
 }
-function opcionesChart(stacked){
+function opcionesChart(stacked, onClick){
   const c = getComputedStyle(document.body), m = c.getPropertyValue("--muted").trim(), l = c.getPropertyValue("--line").trim();
-  return { responsive:true, maintainAspectRatio:false,
+  return { responsive:true, maintainAspectRatio:false, onClick,
     plugins:{ legend:{ position:"bottom", labels:{ color:m, boxWidth:10, font:{family:"Inter",size:11} } } },
     scales:{ x:{ stacked, grid:{display:false}, ticks:{color:m,font:{family:"Inter",size:11}} },
              y:{ stacked, beginAtZero:true, grid:{color:l}, ticks:{color:m,precision:0,font:{family:"JetBrains Mono",size:11}} } } };
@@ -500,44 +577,60 @@ async function agregarOtroOperario(){
   if (!$("ne-otro-guardar").checked) await db.ref(`${R}/fichas/${PLANTA}/x_${ref.key}/inactivo`).set(true);
   NE.persona = "x_"+ref.key; $("ne-otro-nombre").value=""; $("ne-otro-sector").value=""; toggleOtroOp(false); renderNeOperarios();
 }
+function tallesDe(c){ return String((c&&c.talles)||"").split(",").map(s=>s.trim()).filter(Boolean); }
 function renderNeItems(){
-  const ids = Object.keys(NE.items).filter(k=>NE.items[k]>0 && CATALOGO[k]);
-  $("ne-items").innerHTML = ids.length ? ids.map(k=>{ const c=CATALOGO[k]; return `<div class="it"><span style="font-size:22px">${c.emoji||"📦"}</span><div><div style="font-weight:600">${esc(c.producto)}</div><div class="small muted">${esc(c.tipo)} · ${esc(c.marca)} · ${c.cert==="si"?"certificado":"sin certificación"}</div></div><div class="step"><button onclick="cantItem('${k}',-1)">−</button><span>${NE.items[k]}</span><button onclick="cantItem('${k}',1)">+</button></div></div>`; }).join("")
-    : `<div class="small muted">Tocá los elementos que se entregan.</div>`;
-  $("ne-cat").innerHTML = catOrden(true).map(([k,c])=>`<span class="chip ${NE.items[k]?"on":""}" onclick="cantItem('${k}',1)">${c.emoji||"📦"} ${esc(c.producto)}${NE.items[k]?` <span class="q">${NE.items[k]}</span>`:""}</span>`).join("")
+  const st = stockActual();
+  $("ne-items").innerHTML = NE.items.length ? NE.items.map((x,i)=>{ const c=CATALOGO[x.catId]; if(!c) return ""; const tl=tallesDe(c);
+    return `<div class="it" style="flex-wrap:wrap"><span style="font-size:22px">${c.emoji||"📦"}</span>
+      <div style="flex:1;min-width:150px"><div style="font-weight:600">${esc(c.producto)}</div><div class="small muted">${esc(c.tipo)}${c.marca?" · "+esc(c.marca):""} · ${c.cert==="si"?"certificado":"sin certificación"}</div></div>
+      <div class="step"><button onclick="cantItem(${i},-1)">−</button><span>${x.cant}</span><button onclick="cantItem(${i},1)">+</button></div>
+      ${tl.length?`<div class="chips" style="width:100%;margin-top:8px"><span class="small muted" style="align-self:center">Talle:</span>${tl.map(t=>`<span class="chip ${x.talle===t?"on":""}" style="padding:5px 11px;font-size:13px" onclick="NE.items[${i}].talle='${esc(t)}';renderNeItems()">${esc(t)}${c.stock?` <span class="small" style="opacity:.7">(${st[x.catId+"|"+t]||0})</span>`:""}</span>`).join("")}</div>`:""}
+    </div>`; }).join("") : `<div class="small muted">Tocá los elementos que se entregan.</div>`;
+  $("ne-cat").innerHTML = catOrden(true).map(([k,c])=>{ const q=NE.items.filter(x=>x.catId===k).reduce((a,x)=>a+x.cant,0);
+      const disp = c.stock ? tallesDe(c).length ? tallesDe(c).reduce((a,t)=>a+(st[k+"|"+t]||0),0) : (st[k+"|"]||0) : null;
+      return `<span class="chip ${q?"on":""}" onclick="agregarItem('${k}')">${c.emoji||"📦"} ${esc(c.producto)}${q?` <span class="q">${q}</span>`:""}${disp!==null&&disp<=0?` <span class="badge b-red">sin stock</span>`:""}</span>`; }).join("")
     + `<span class="chip otro" onclick="toggleOtroEl(true)">＋ Otro elemento</span>`;
 }
-function cantItem(k,d){ NE.items[k]=Math.max(0,(NE.items[k]||0)+d); if(!NE.items[k]) delete NE.items[k]; renderNeItems(); }
+function agregarItem(k){
+  const c = CATALOGO[k];
+  if (!tallesDe(c).length){ const x=NE.items.find(x=>x.catId===k); if (x){ x.cant++; return renderNeItems(); } }
+  NE.items.push({ catId:k, talle:"", cant:1 }); renderNeItems();
+}
+function cantItem(i,d){ NE.items[i].cant += d; if (NE.items[i].cant<=0) NE.items.splice(i,1); renderNeItems(); }
 function toggleOtroEl(v){ $("ne-otro-el").classList.toggle("hide",!v); if(v) $("oe-prod").focus(); }
 async function agregarOtroElemento(){
   const prod = $("oe-prod").value.trim(); if (!prod) return toast("Escribí el producto", true);
   const ref = db.ref(R+"/catalogo").push();
-  await ref.set({ producto:prod, tipo:$("oe-tipo").value.trim(), marca:$("oe-marca").value.trim(), cert:$("oe-cert").value, emoji:"📦", orden:99, activo:$("oe-guardar").checked });
-  NE.items[ref.key]=1; ["oe-prod","oe-tipo","oe-marca"].forEach(i=>$(i).value=""); toggleOtroEl(false); renderNeItems();
+  const c = { producto:prod, tipo:$("oe-tipo").value.trim(), marca:$("oe-marca").value.trim(), cert:$("oe-cert").value, emoji:emojiPrenda(prod), orden:99, activo:$("oe-guardar").checked };
+  CATALOGO[ref.key] = c; await ref.set(c);
+  NE.items.push({ catId:ref.key, talle:"", cant:1 }); ["oe-prod","oe-tipo","oe-marca"].forEach(i=>$(i).value=""); toggleOtroEl(false); renderNeItems();
 }
 async function guardarEntrega(){
   const per = personas(PLANTA)[NE.persona];
   if (!per) return toast("Elegí el operario", true);
-  const ids = Object.keys(NE.items).filter(k=>NE.items[k]>0 && CATALOGO[k]);
-  if (!ids.length) return toast("Agregá al menos un elemento", true);
+  const items = NE.items.filter(x=>x.cant>0 && CATALOGO[x.catId]);
+  if (!items.length) return toast("Agregá al menos un elemento", true);
+  const falta = items.find(x=>tallesDe(CATALOGO[x.catId]).length && !x.talle);
+  if (falta) return toast(`Elegí el talle de ${CATALOGO[falta.catId].producto}`, true);
   const sinFirma = padNE.vacio;
   if (sinFirma && !confirm("La entrega no tiene firma. ¿Guardarla igual y firmarla después?")) return;
   $("ne-guardar").disabled = true;
+  const pref = NE.pedidoRef;
   try {
     const ref = db.ref(`${R}/entregas/${PLANTA}`).push();
     if (!sinFirma) await db.ref(`${R}/firmas/${PLANTA}/${ref.key}`).set(padNE.png());
     await ref.set({
       persona:per.key, nombre:per.nombre, sector:per.puesto||per.sector, fecha:$("ne-fecha").value||hoy(), ts:Date.now(),
-      items: ids.map(k=>{ const c=CATALOGO[k]; return { catId:k, producto:c.producto, tipo:c.tipo||"", marca:c.marca||"", cert:c.cert||"no", cantidad:NE.items[k] }; }),
+      items: items.map(x=>{ const c=CATALOGO[x.catId]; return { catId:x.catId, producto:c.producto, tipo:c.tipo||"", marca:c.marca||"", cert:c.cert||"no", cantidad:x.cant, talle:x.talle||"" }; }),
       firmada:!sinFirma, retira:$("ne-retira").value.trim(), obs:$("ne-obs").value.trim()
     });
+    if (pref && pref.p===PLANTA) await db.ref(`${R}/pedidos/${pref.p}/${pref.pid}/resp/${pref.key}`).update({ entregado:true, entregaId:ref.key });
     toast(`Entrega guardada · ${per.nombre}`);
-    NE = { persona:null, items:{} }; $("ne-retira").value=""; $("ne-obs").value=""; $("ne-buscar").value=""; padNE.limpiar();
-    renderNueva();
+    NE = { persona:null, items:[] }; $("ne-retira").value=""; $("ne-obs").value=""; $("ne-buscar").value=""; padNE.limpiar();
+    if (pref){ TAB="pedidos"; PED_SEL=pref.pid; renderActual(); } else renderNueva();
   } catch(e){ toast("No se pudo guardar. Revisá la conexión.", true); }
   $("ne-guardar").disabled = false;
 }
-
 /* =========================================================
    OPERARIOS
    ========================================================= */
@@ -576,7 +669,7 @@ function hojasDe(p,key){
   const ents = entregasDe(p,key);
   const cierres = Object.entries(((D[p].cierres||{})[key])||{}).map(([id,c])=>({id,...c})).sort((a,b)=>a.ts-b.ts);
   const usados = new Set(), hojas = [];
-  const filas = list => { const r=[]; list.forEach(e=>e.items.forEach(it=>r.push({e,it}))); return r; };
+  const filas = list => { const r=[]; list.forEach(e=>e.items.forEach((it,i)=>r.push({e,it,i}))); return r; };
   cierres.forEach(c => {
     const es = ents.filter(e=>c.ids && c.ids[e.id]); es.forEach(e=>usados.add(e.id));
     const f = filas(es); for (let i=0;i<f.length;i+=FILAS_POR_HOJA) hojas.push({ rows:f.slice(i,i+FILAS_POR_HOJA), cerrada:true, cierre:c });
@@ -611,7 +704,7 @@ function renderFicha(){
     <div class="card" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
       ${avatar(o.nombre,true)}
       <div style="flex:1;min-width:180px"><div style="font-size:19px;font-weight:700">${esc(o.nombre)}</div><div class="muted small" style="margin-top:3px">${esc(o.puesto)} · ${PLANTAS[p].corto}${o.dni?" · DNI "+esc(o.dni):""}</div></div>
-      <button class="primary" onclick="NE={persona:'${o.key}',items:{}};setTab('nueva')">➕ Nueva entrega</button>
+      <button class="primary" onclick="NE={persona:'${o.key}',items:[]};setTab('nueva')">➕ Nueva entrega</button>
     </div>
     <div class="kpis">
       <div class="kpi"><div class="l">Entregas totales</div><div class="v">${ents.length}</div></div>
@@ -637,24 +730,25 @@ function renderFicha(){
         <tr><th>#</th><th>Producto</th><th>Tipo / modelo</th><th>Marca</th><th>Cert.</th><th class="num">Cant.</th><th>Fecha</th><th>Firma</th><th></th></tr>
         ${hoja.rows.map((f,i)=>`<tr>
           <td class="muted mono">${i+1}</td>
-          <td>${emojiDe(f.it.producto)} ${esc(f.it.producto)}</td><td>${esc(f.it.tipo)}</td><td>${esc(f.it.marca)}</td>
+          <td>${emojiDe(f.it.producto)} ${esc(f.it.producto)}</td><td>${esc(f.it.tipo)}${f.it.talle?" · T "+esc(f.it.talle):""}</td><td>${esc(f.it.marca)}</td>
           <td>${f.it.cert==="si"?"Sí":"No"}</td><td class="num">${esc(f.it.cantidad)}</td><td class="mono small">${fFecha(f.e.fecha)}</td>
           <td>${f.e.firmada ? (FIRMAS[f.e.id]?`<img class="firma-img" src="${FIRMAS[f.e.id]}" alt="Firma">`:`<span class="small muted">cargando…</span>`) : `<button class="sm" style="color:var(--acc);border-color:var(--acc)" onclick="abrirModalFirma('${f.e.id}')">✍️ Firmar</button>`}
             ${f.e.retira?`<div class="small muted">Retira: ${esc(f.e.retira)}</div>`:""}</td>
-          <td>${hoja.cerrada?"":`<button class="sm danger" title="Borrar entrega" onclick="borrarEntrega('${f.e.id}')">🗑</button>`}</td>
+          <td>${hoja.cerrada?"":`<button class="sm danger" title="Borrar renglón" onclick="borrarRenglon('${f.e.id}',${f.i})">🗑</button>`}</td>
         </tr>`).join("")}
         ${!hoja.cerrada&&libres>0?`<tr><td colspan="9" class="small muted" style="text-align:center">${libres===FILAS_POR_HOJA?`Hoja nueva · ${FILAS_POR_HOJA} renglones libres`:libres===1?"1 renglón libre":`${libres} renglones libres`}</td></tr>`:""}
       </table></div>
     </div>
 
+    <div id="fi-exp" data-titulo="Historial ${esc(o.nombre)} ${textoPeriodo(FI_ANIO,FI_MES)}">
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
         <h3 style="margin:0">Historial de retiros</h3>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">${selPeriodo("FI_ANIO","FI_MES",FI_ANIO,FI_MES,"renderFicha")}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${selPeriodo("FI_ANIO","FI_MES",FI_ANIO,FI_MES,"renderFicha")}<button onclick="exportar('fi-exp',false)">🖨️</button><button onclick="exportar('fi-exp',true)">📤</button></div>
       </div>
       ${entsP.length ? `
         <div class="small muted" style="margin-bottom:8px">${uPer} unidades ${textoPeriodo(FI_ANIO,FI_MES)}</div>
-        <div class="elems" style="margin-bottom:12px">${Object.entries(tot).sort((a,b)=>b[1]-a[1]).map(([pr,q])=>`<div class="elem"><span class="em">${emojiDe(pr)}</span><div><div class="n">${q}</div><div class="t">${esc(pr)}</div></div></div>`).join("")}</div>
+        <div class="elems" style="margin-bottom:12px">${Object.entries(tot).sort((a,b)=>b[1]-a[1]).map(([pr,q])=>`<div class="elem" ${det({titulo:`${o.nombre} · ${pr} ${textoPeriodo(FI_ANIO,FI_MES)}`,persona:o.key,producto:pr,anio:FI_ANIO,mes:FI_MES})}><span class="em">${emojiDe(pr)}</span><div><div class="n">${q}</div><div class="t">${esc(pr)}</div></div></div>`).join("")}</div>
         ${entsP.map(e=>{ const h=enHoja[e.id]; return `<div class="li"><span><span class="mono small muted">${fFecha(e.fecha)}</span> &nbsp;${e.items.map(it=>`${emojiDe(it.producto)} ${esc(it.producto)}${n(it.cantidad)>1?" ×"+it.cantidad:""}`).join(", ")}${e.retira?` <span class="s">· retira ${esc(e.retira)}</span>`:""}</span>
           <span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${e.firmada?"":`<span class="badge b-red">sin firma</span>`}${h?`<span class="badge ${h.cerrada?"b-ok":"b-warn"}">Hoja ${h.num}${h.cerrada?" ✓":""}</span>`:""}</span></div>`; }).join("")}`
       : `<div class="empty"><span class="em">🗂️</span>Sin retiros ${textoPeriodo(FI_ANIO,FI_MES)}.</div>`}
@@ -663,6 +757,8 @@ function renderFicha(){
     <div class="card"><h3>Registro de impresiones y envíos</h3>
       ${reg.length ? reg.map(r=>{ const t=TIPOS[r.tipo]||["•",r.tipo]; return `<div class="li"><span>${t[0]} ${t[1]} <span class="s">· hoja${String(r.hojas).includes(",")?"s":""} ${esc(r.hojas)} · ${r.renglones} renglones</span></span><span class="mono small muted">${fFechaHora(r.ts)}</span></div>`; }).join("")
         : `<div class="small muted">Todavía no se imprimió ni envió ninguna hoja.</div>`}
+    </div>
+
     </div>
 
     <div class="card"><h3>Datos para la planilla</h3>
@@ -723,7 +819,7 @@ async function docPlanilla(key, hs){
     <table class="det">
       <colgroup><col style="width:3%"><col style="width:13%"><col style="width:12%"><col style="width:9%"><col style="width:7%"><col style="width:6%"><col style="width:8%"><col style="width:42%"></colgroup>
       <tr><th></th><th>${N(11)} Producto</th><th>${N(12)} Tipo / Modelo</th><th>${N(13)} Marca</th><th>${N(14)} Posee cert. SI / NO</th><th>${N(15)} Cantidad</th><th>${N(16)} Fecha de entrega</th><th>${N(17)} Firma del trabajador</th></tr>
-      ${Array.from({length:FILAS_POR_HOJA},(_,i)=>{ const f=h.rows[i]; return f?`<tr><td>${i+1}</td><td>${esc(f.it.producto)}</td><td>${esc(f.it.tipo)}</td><td>${esc(f.it.marca)}</td><td>${f.it.cert==="si"?"SI":"NO"}</td><td>${esc(f.it.cantidad)}</td><td>${fFecha(f.e.fecha)}</td><td class="fi">${FIRMAS[f.e.id]?`<img src="${FIRMAS[f.e.id]}">`:""}</td></tr>`:`<tr><td>${i+1}</td><td></td><td></td><td></td><td></td><td></td><td></td><td class="fi"></td></tr>`; }).join("")}
+      ${Array.from({length:FILAS_POR_HOJA},(_,i)=>{ const f=h.rows[i]; return f?`<tr><td>${i+1}</td><td>${esc(f.it.producto)}</td><td>${esc(f.it.tipo)}${f.it.talle?" · T "+esc(f.it.talle):""}</td><td>${esc(f.it.marca)}</td><td>${f.it.cert==="si"?"SI":"NO"}</td><td>${esc(f.it.cantidad)}</td><td>${fFecha(f.e.fecha)}</td><td class="fi">${FIRMAS[f.e.id]?`<img src="${FIRMAS[f.e.id]}">`:""}</td></tr>`:`<tr><td>${i+1}</td><td></td><td></td><td></td><td></td><td></td><td></td><td class="fi"></td></tr>`; }).join("")}
     </table>
     <div class="info">${N(18)} Información adicional: ${hi===hs.length-1?info:""}</div>
     <div class="pf">
@@ -833,51 +929,54 @@ async function compartirPlanilla(key, idx){
    ESTADÍSTICAS
    ========================================================= */
 function renderEstad(){
-  const p = PLANTA, aniosL = anios(p);
-  const ents = Object.values(D[p].entregas);
-  const delAnio = ents.filter(e=>ESTAD_MODO==="mes" ? +e.fecha.slice(0,4)===+ESTAD_ANIO : enPeriodo(e,ESTAD_ANIO,ESTAD_MES));
-  let cuerpo = "";
+  const p = PLANTA, aniosL = anios(p), ents = Object.values(D[p].entregas);
+  const delPer = ents.filter(e=>ESTAD_MODO==="mes" ? +e.fecha.slice(0,4)===+ESTAD_ANIO : enPeriodo(e,ESTAD_ANIO,ESTAD_MES));
+  const tp = textoPeriodo(ESTAD_ANIO,ESTAD_MES);
+  const titulos = { mes:`Mes a mes ${ESTAD_ANIO}`, anio:"Comparación año a año", sector:`Por sector ${tp}`, operario:`Por operario ${tp}` };
+  let cuerpo = "", grafico = null;
   if (ESTAD_MODO==="mes"){
-    const prods={}; delAnio.forEach(e=>e.items.forEach(it=>{ (prods[it.producto]=prods[it.producto]||Array(12).fill(0))[+e.fecha.slice(5,7)-1]+=n(it.cantidad); }));
-    const max = Math.max(1,...Object.values(prods).flat());
-    const tm = Array(12).fill(0); Object.values(prods).forEach(v=>v.forEach((x,i)=>tm[i]+=x));
-    cuerpo = Object.keys(prods).length ? `<div class="card"><h3>Unidades por elemento · ${ESTAD_ANIO}</h3><div class="tscroll"><table class="tbl"><tr><th>Elemento</th>${MESES.map(m=>`<th class="num">${m}</th>`).join("")}<th class="num">Total</th></tr>
-      ${Object.entries(prods).map(([pr,v])=>`<tr><td style="white-space:nowrap">${emojiDe(pr)} ${esc(pr)}</td>${v.map(x=>`<td class="num" style="${x?`background:color-mix(in srgb, var(--acc) ${Math.round(12+60*x/max)}%, transparent)`:""}">${x||"·"}</td>`).join("")}<td class="num" style="font-weight:700">${v.reduce((a,b)=>a+b,0)}</td></tr>`).join("")}
-      <tr><td style="font-weight:700">Total</td>${tm.map(x=>`<td class="num" style="font-weight:700">${x||"·"}</td>`).join("")}<td class="num" style="font-weight:700;color:var(--acc)">${tm.reduce((a,b)=>a+b,0)}</td></tr></table></div></div>
+    const prods={}; delPer.forEach(e=>e.items.forEach(it=>{ (prods[it.producto]=prods[it.producto]||Array(12).fill(0))[+e.fecha.slice(5,7)-1]+=n(it.cantidad); }));
+    const max = Math.max(1,...Object.values(prods).flat()), tm = Array(12).fill(0); Object.values(prods).forEach(v=>v.forEach((x,i)=>tm[i]+=x));
+    const Y = ESTAD_ANIO;
+    cuerpo = Object.keys(prods).length ? `<div class="card"><h3>Unidades por elemento · ${Y}</h3><div class="tscroll"><table class="tbl"><tr><th>Elemento</th>${MESES.map(m=>`<th class="num">${m}</th>`).join("")}<th class="num">Total</th></tr>
+      ${Object.entries(prods).map(([pr,v])=>`<tr><td style="white-space:nowrap" ${det({titulo:`${pr} ${Y}`,producto:pr,anio:Y,mes:"todo"})}>${emojiDe(pr)} ${esc(pr)}</td>${v.map((x,i)=>`<td class="num" ${x?det({titulo:`${pr} · ${MESES_L[i]} ${Y}`,producto:pr,anio:Y,mes:i+1}):""} style="${x?`cursor:pointer;background:color-mix(in srgb, var(--acc) ${Math.round(12+60*x/max)}%, transparent)`:""}">${x||"·"}</td>`).join("")}<td class="num" style="font-weight:700">${v.reduce((a,b)=>a+b,0)}</td></tr>`).join("")}
+      <tr><td style="font-weight:700">Total</td>${tm.map((x,i)=>`<td class="num" style="font-weight:700" ${x?det({titulo:`Entregas ${MESES_L[i]} ${Y}`,anio:Y,mes:i+1}):""}>${x||"·"}</td>`).join("")}<td class="num" style="font-weight:700;color:var(--acc)">${tm.reduce((a,b)=>a+b,0)}</td></tr></table></div></div>
       <div class="card"><h3>Gráfico mensual</h3><div style="position:relative;height:260px"><canvas id="ch-es"></canvas></div></div>` : vacioEstad();
+    if (Object.keys(prods).length) grafico = ()=>graficoMensual("ch-es", p, Y);
   }
   if (ESTAD_MODO==="anio"){
     const prods={}, ys=[...aniosL].reverse();
     ents.forEach(e=>e.items.forEach(it=>{ const o=prods[it.producto]=prods[it.producto]||{}; o[e.fecha.slice(0,4)]=(o[e.fecha.slice(0,4)]||0)+n(it.cantidad); }));
     cuerpo = Object.keys(prods).length ? `<div class="card"><h3>Comparación por año</h3><div class="tscroll"><table class="tbl"><tr><th>Elemento</th>${ys.map(y=>`<th class="num">${y}</th>`).join("")}</tr>
-      ${Object.entries(prods).map(([pr,o])=>`<tr><td>${emojiDe(pr)} ${esc(pr)}</td>${ys.map(y=>`<td class="num">${o[y]||"·"}</td>`).join("")}</tr>`).join("")}
-      <tr><td style="font-weight:700">Total</td>${ys.map(y=>`<td class="num" style="font-weight:700;color:var(--acc)">${Object.values(prods).reduce((a,o)=>a+(o[y]||0),0)}</td>`).join("")}</tr></table></div></div>
+      ${Object.entries(prods).map(([pr,o])=>`<tr><td>${emojiDe(pr)} ${esc(pr)}</td>${ys.map(y=>`<td class="num" ${o[y]?det({titulo:`${pr} ${y}`,producto:pr,anio:y,mes:"todo"}):""}>${o[y]||"·"}</td>`).join("")}</tr>`).join("")}
+      <tr><td style="font-weight:700">Total</td>${ys.map(y=>`<td class="num" style="font-weight:700;color:var(--acc)" ${det({titulo:`Entregas ${y}`,anio:y,mes:"todo"})}>${Object.values(prods).reduce((a,o)=>a+(o[y]||0),0)}</td>`).join("")}</tr></table></div></div>
       <div class="card"><h3>Gráfico por año</h3><div style="position:relative;height:260px"><canvas id="ch-es"></canvas></div></div>` : vacioEstad();
-    if (Object.keys(prods).length) setTimeout(()=>dibujar("ch-es",{type:"bar",data:{labels:ys.map(String),datasets:Object.entries(prods).map(([pr,o],i)=>({label:pr,data:ys.map(y=>o[y]||0),backgroundColor:CHART_COLORS[i%CHART_COLORS.length],borderRadius:3}))},options:opcionesChart(false)}));
+    if (Object.keys(prods).length) grafico = ()=>dibujar("ch-es",{type:"bar",data:{labels:ys.map(String),datasets:Object.entries(prods).map(([pr,o],i)=>({label:pr,data:ys.map(y=>o[y]||0),backgroundColor:CHART_COLORS[i%CHART_COLORS.length],borderRadius:3}))},
+      options:opcionesChart(false,(ev,els,ch)=>{ if(!els.length) return; const pr=ch.data.datasets[els[0].datasetIndex].label, y=+ch.data.labels[els[0].index]; verDetalle({titulo:`${pr} ${y}`,producto:pr,anio:y,mes:"todo"}); })});
   }
   if (ESTAD_MODO==="sector"){
-    const s={}; delAnio.forEach(e=>e.items.forEach(it=>{ const o=s[e.sector]=s[e.sector]||{t:0,p:{}}; o.t+=n(it.cantidad); o.p[it.producto]=(o.p[it.producto]||0)+n(it.cantidad); }));
+    const s={}; delPer.forEach(e=>e.items.forEach(it=>{ const o=s[e.sector]=s[e.sector]||{t:0,p:{}}; o.t+=n(it.cantidad); o.p[it.producto]=(o.p[it.producto]||0)+n(it.cantidad); }));
     const max=Math.max(1,...Object.values(s).map(o=>o.t));
-    cuerpo = Object.keys(s).length ? `<div class="card"><h3>Unidades por sector ${textoPeriodo(ESTAD_ANIO,ESTAD_MES)}</h3>${Object.entries(s).sort((a,b)=>b[1].t-a[1].t).map(([k,o])=>`
-      <div style="margin:12px 0"><div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:5px"><b>${esc(k)}</b><span class="mono">${o.t}</span></div>
+    cuerpo = Object.keys(s).length ? `<div class="card"><h3>Unidades por sector ${tp}</h3>${Object.entries(s).sort((a,b)=>b[1].t-a[1].t).map(([k,o])=>`
+      <div style="margin:12px 0" ${det({titulo:`${k} ${tp}`,sector:k,anio:ESTAD_ANIO,mes:ESTAD_MES})}><div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:5px"><b>${esc(k)}</b><span class="mono">${o.t}</span></div>
       <div class="bar"><i style="width:${Math.round(100*o.t/max)}%"></i></div>
       <div class="small muted" style="margin-top:5px">${Object.entries(o.p).sort((a,b)=>b[1]-a[1]).map(([pr,q])=>`${emojiDe(pr)} ${esc(pr)} ${q}`).join(" &nbsp; ")}</div></div>`).join("")}</div>` : vacioEstad();
   }
   if (ESTAD_MODO==="operario"){
-    const o={}; delAnio.forEach(e=>{ const x=o[e.persona]=o[e.persona]||{nombre:e.nombre,sector:e.sector,u:0,ent:0,p:{}}; x.ent++; e.items.forEach(it=>{ x.u+=n(it.cantidad); x.p[it.producto]=(x.p[it.producto]||0)+n(it.cantidad); }); });
-    cuerpo = Object.keys(o).length ? `<div class="card"><h3>Por operario ${textoPeriodo(ESTAD_ANIO,ESTAD_MES)}</h3>${Object.entries(o).sort((a,b)=>b[1].u-a[1].u).map(([k,x])=>`
-      <div class="op" onclick="abrirFicha('${k}')">${avatar(x.nombre)}<div><div class="nm">${esc(x.nombre)}</div><div class="s">${esc(x.sector)} · ${x.ent} entrega${x.ent>1?"s":""}</div></div>
+    const o={}; delPer.forEach(e=>{ const x=o[e.persona]=o[e.persona]||{nombre:e.nombre,sector:e.sector,u:0,ent:0,p:{}}; x.ent++; e.items.forEach(it=>{ x.u+=n(it.cantidad); x.p[it.producto]=(x.p[it.producto]||0)+n(it.cantidad); }); });
+    cuerpo = Object.keys(o).length ? `<div class="card"><h3>Por operario ${tp}</h3>${Object.entries(o).sort((a,b)=>b[1].u-a[1].u).map(([k,x])=>`
+      <div class="op" ${det({titulo:`${x.nombre} ${tp}`,persona:k,anio:ESTAD_ANIO,mes:ESTAD_MES})}>${avatar(x.nombre)}<div><div class="nm">${esc(x.nombre)}</div><div class="s">${esc(x.sector)} · ${x.ent} entrega${x.ent>1?"s":""}</div></div>
       <div class="r" style="align-items:center"><span class="small">${Object.entries(x.p).map(([pr,q])=>`${emojiDe(pr)}${q}`).join(" ")}</span><span class="badge b-ok">${x.u} u.</span></div></div>`).join("")}</div>` : vacioEstad();
   }
+  const sel = ESTAD_MODO==="mes" ? `<select style="width:auto" onchange="ESTAD_ANIO=+this.value;renderEstad()">${aniosL.map(a=>`<option ${a==ESTAD_ANIO?"selected":""}>${a}</option>`).join("")}</select>`
+            : ESTAD_MODO==="anio" ? "" : selPeriodo("ESTAD_ANIO","ESTAD_MES",ESTAD_ANIO,ESTAD_MES,"renderEstad");
   $("v-estad").innerHTML = `
     <div class="sub-tabs">${[["mes","Mes a mes"],["anio","Año a año"],["sector","Por sector"],["operario","Por operario"]].map(([k,t])=>`<button class="${ESTAD_MODO===k?"on":""}" onclick="ESTAD_MODO='${k}';renderEstad()">${t}</button>`).join("")}</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
-      ${ESTAD_MODO==="sector"||ESTAD_MODO==="operario"?selPeriodo("ESTAD_ANIO","ESTAD_MES",ESTAD_ANIO,ESTAD_MES,"renderEstad"):""}${ESTAD_MODO==="mes"?`<select style="width:auto" onchange="ESTAD_ANIO=+this.value;renderEstad()">${aniosL.map(a=>`<option ${a==ESTAD_ANIO?"selected":""}>${a}</option>`).join("")}</select>`:""}
-      <span style="flex:1"></span>
-      <button onclick="imprimirHTML(docResumen(${ESTAD_ANIO}))">🖨️ Imprimir resumen ${ESTAD_ANIO}</button>
-      <button onclick="compartirHTML(docResumen(${ESTAD_ANIO}),'Resumen_EPP_${PLANTAS[PLANTA].corto}_${ESTAD_ANIO}')">📤 Compartir</button>
-    </div>${cuerpo}`;
-  if (ESTAD_MODO==="mes" && delAnio.length) graficoMensual("ch-es", p, ESTAD_ANIO);
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">${sel}<span style="flex:1"></span>
+      <button onclick="exportar('estad-cont',false)">🖨️ Imprimir</button><button onclick="exportar('estad-cont',true)">📤 Compartir</button></div>
+    <p class="small muted" style="margin:-6px 0 12px">Tocá cualquier número, barra o fila para ver el detalle.</p>
+    <div id="estad-cont" data-titulo="Estadísticas · ${esc(titulos[ESTAD_MODO])}">${cuerpo}</div>`;
+  if (grafico) grafico();
 }
 function vacioEstad(){ return `<div class="card"><div class="empty"><span class="em">📈</span>Sin datos para este período.</div></div>`; }
 
@@ -894,13 +993,16 @@ function renderConfig(){
       <div class="row" style="margin-top:8px">${campo("cp","C.P.")}${campo("provincia","Provincia")}</div>
     </div>
     <div class="card"><h3>Listado de EPP</h3>
-      <div class="tscroll"><table class="tbl"><tr><th></th><th>Producto</th><th>Tipo / modelo</th><th>Marca</th><th>Cert.</th><th></th></tr>
+      <div class="tscroll"><table class="tbl"><tr><th></th><th>Producto</th><th>Tipo / modelo</th><th>Marca</th><th>Cert.</th><th>Talles (separados por coma)</th><th>Stock</th><th>Mín.</th><th></th></tr>
       ${catOrden(false).map(([k,c])=>`<tr style="${c.activo===false?"opacity:.5":""}">
         <td><input value="${esc(c.emoji||"📦")}" style="width:46px;text-align:center;padding:6px" onchange="editCat('${k}','emoji',this.value)"></td>
-        <td><input value="${esc(c.producto)}" onchange="editCat('${k}','producto',this.value)"></td>
-        <td><input value="${esc(c.tipo)}" onchange="editCat('${k}','tipo',this.value)"></td>
-        <td><input value="${esc(c.marca)}" onchange="editCat('${k}','marca',this.value)"></td>
-        <td><select style="width:70px" onchange="editCat('${k}','cert',this.value)"><option value="si" ${c.cert==="si"?"selected":""}>Sí</option><option value="no" ${c.cert!=="si"?"selected":""}>No</option></select></td>
+        <td><input value="${esc(c.producto)}" style="min-width:120px" onchange="editCat('${k}','producto',this.value)"></td>
+        <td><input value="${esc(c.tipo)}" style="min-width:110px" onchange="editCat('${k}','tipo',this.value)"></td>
+        <td><input value="${esc(c.marca)}" style="min-width:90px" onchange="editCat('${k}','marca',this.value)"></td>
+        <td><select style="width:66px" onchange="editCat('${k}','cert',this.value)"><option value="si" ${c.cert==="si"?"selected":""}>Sí</option><option value="no" ${c.cert!=="si"?"selected":""}>No</option></select></td>
+        <td><input value="${esc(c.talles||"")}" placeholder="Sin talle" style="min-width:130px" onchange="editCat('${k}','talles',this.value)"></td>
+        <td style="text-align:center"><input type="checkbox" style="width:auto" ${c.stock?"checked":""} onchange="setStockCat('${k}',this.checked)"></td>
+        <td><input type="number" min="0" value="${esc(c.minimo||"")}" style="width:60px" ${c.stock?"":"disabled"} onchange="editCat('${k}','minimo',+this.value)"></td>
         <td><button class="sm ${c.activo===false?"":"danger"}" onclick="editCat('${k}','activo',${c.activo===false})">${c.activo===false?"Activar":"Dar de baja"}</button></td></tr>`).join("")}
       </table></div>
       <div class="row" style="margin-top:12px;align-items:flex-end">
@@ -909,7 +1011,7 @@ function renderConfig(){
         <div style="flex:0 0 90px;min-width:90px"><label>Cert.</label><select id="nc-cert"><option value="si">Sí</option><option value="no">No</option></select></div>
         <button class="primary" style="flex:0 0 auto" onclick="nuevoCat()">＋ Agregar</button>
       </div>
-      <p class="small muted" style="margin-bottom:0">Los cambios de marca o modelo valen para las entregas nuevas; lo ya entregado conserva sus datos.</p>
+      <p class="small muted" style="margin-bottom:0">“Stock” activa el control de existencias de ese elemento (pestaña 📦 Stock). Los cambios valen para las entregas nuevas; lo ya entregado conserva sus datos.</p>
     </div>
     <div class="card"><h3>Personas cargadas solo en EPP · ${PLANTAS[PLANTA].corto}</h3>
       ${ex.length?ex.map(([id,o])=>{ const k="x_"+id, inac=fi[k]&&fi[k].inactivo; return `<div class="li"><span>${esc(o.apellidoNombre)} <span class="s">· ${esc(o.sector)}</span>${inac?' <span class="badge b-red">inactivo</span>':""}</span>
@@ -919,7 +1021,12 @@ function renderConfig(){
         <button class="primary" style="flex:0 0 auto" onclick="nuevoExtra()">＋ Agregar</button>
       </div>
       <p class="small muted" style="margin-bottom:0">Los operarios de Horas Extras se administran desde esa app. Para dar de baja a alguien, entrá a su ficha.</p>
-    </div>`;
+    </div>
+    <div class="card"><h3>Sesión</h3><button class="sm danger" onclick="try{localStorage.removeItem('epp_auth')}catch(e){};renderActual()">Cerrar sesión en este dispositivo</button></div>`;
+}
+function setStockCat(k, on){
+  const upd = { stock:on }; if (on && !CATALOGO[k].stockDesde) upd.stockDesde = Date.now();
+  db.ref(`${R}/catalogo/${k}`).update(upd).then(()=>toast(on?"Control de stock activado":"Control de stock desactivado"));
 }
 function editCat(k,campo,v){ db.ref(`${R}/catalogo/${k}/${campo}`).set(typeof v==="string"?v.trim():v).then(()=>toast("Guardado")); }
 function nuevoCat(){
@@ -935,6 +1042,450 @@ function editExtra(id){
   const sc=prompt("Puesto / sector:",o.sector); if(sc===null) return;
   db.ref(`${R}/extras/${PLANTA}/${id}`).update({apellidoNombre:nm.trim().toUpperCase(),sector:sc.trim()}).then(()=>toast("Guardado"));
 }
+
+/* =========================================================
+   UTILIDADES NUEVAS
+   ========================================================= */
+function norm(s){ return String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().trim(); }
+function emojiPrenda(s){ const x=norm(s);
+  if (x.includes("PANTAL")) return "👖"; if (x.includes("CAMISA")) return "👔"; if (x.includes("REMERA")) return "👕";
+  if (x.includes("BUZO")||x.includes("CAMPERA")||x.includes("CHALECO")) return "🧥"; if (x.includes("GUARDAPOLVO")) return "🥼";
+  if (x.includes("BOTIN")||x.includes("ZAPAT")||x.includes("CALZADO")) return "🥾"; if (x.includes("GUANTE")) return "🧤";
+  if (x.includes("CASCO")) return "⛑️"; if (x.includes("ANTEOJO")||x.includes("LENTE")) return "🥽"; return "📦"; }
+function ordenar(o){ return Object.entries(o||{}).sort((a,b)=>(a[1].orden??99)-(b[1].orden??99)||a[0].localeCompare(b[0])); }
+function enPerFecha(f, a, m){ if (+f.slice(0,4)!==+a) return false; return m==="todo" || +f.slice(5,7)===+m; }
+
+function checkMigr(){
+  if (!CONFIG || CONFIG.migr2 || !Object.keys(CATALOGO).length) return;
+  CONFIG.migr2 = true; const now = Date.now(), upd = {};
+  Object.entries(CATALOGO).forEach(([k,c])=>{ const x=norm(c.producto);
+    if (x.startsWith("GUANTE")||x.startsWith("PROTECTOR AUDITIVO")||x.startsWith("FAJA")){ upd[`catalogo/${k}/stock`]=true; upd[`catalogo/${k}/stockDesde`]=now; }
+    if (x.startsWith("FAJA")) upd[`catalogo/${k}/talles`]="S,M,L,XL,XXL"; });
+  upd["config/migr2"] = true; db.ref(R).update(upd);
+}
+function sembrarKits(p){
+  const col = p==="aceitera" ? "azul" : "gris";
+  const K = () => db.ref().push().key;
+  const mk = (titulo,temporada,alts,orden) => { const a={}; alts.forEach(x=>a[K()]={nombre:x[0],cantidad:x[1],color:x[2],talles:x[3]}); return {titulo,temporada,orden,alts:a}; };
+  const calz = o => mk("Calzado","ambas",[["Botín",1,"",T_CALZ],["Zapato",1,"",T_CALZ],["Zapatilla",1,"",T_CALZ]],o);
+  const items = arr => { const o={}; arr.forEach(x=>o[K()]=x); return o; };
+  const kits = {};
+  kits[K()] = { nombre:"General", sectores:"", orden:0, items:items([
+    mk("Pantalón cargo","ambas",[["Pantalón cargo",1,"beige",T_PANT]],1),
+    mk("Remeras o camisa","ambas",[["Remera",2,col,T_ROPA],["Camisa",1,"beige",T_ROPA]],2),
+    mk("Buzo","invierno",[["Buzo",1,col,T_ROPA]],3), calz(4) ]) };
+  if (p==="balanceados") kits[K()] = { nombre:"Laboratorio", sectores:"Laboratorio", orden:1, items:items([
+    mk("Guardapolvo","ambas",[["Guardapolvo",1,"blanco",T_ROPA]],1),
+    mk("Remeras","ambas",[["Remera",2,"gris",T_ROPA]],2),
+    mk("Pantalón","ambas",[["Pantalón",1,"beige",T_PANT]],3),
+    mk("Buzo","invierno",[["Buzo",1,"gris",T_ROPA]],4), calz(5) ]) };
+  db.ref(`${R}/kits/${p}`).set(kits);
+}
+
+/* =========================================================
+   BORRAR RENGLÓN
+   ========================================================= */
+function entregaCerrada(e){ return Object.values(((D[PLANTA].cierres||{})[e.persona])||{}).some(c=>c.ids&&c.ids[e.id]); }
+function borrarRenglon(id, i){
+  const e = D[PLANTA].entregas[id]; if (!e) return;
+  if (entregaCerrada(e)) return toast("Ese renglón ya está en una hoja impresa; no se puede borrar", true);
+  const it = e.items[i]; if (!it) return;
+  if (!confirm(`¿Borrar ${it.cantidad} ${it.producto}${it.talle?" (T "+it.talle+")":""} del ${fFecha(e.fecha)}?`)) return;
+  const resto = e.items.filter((_,j)=>j!==i);
+  if (!resto.length){ db.ref(`${R}/firmas/${PLANTA}/${id}`).remove(); db.ref(`${R}/entregas/${PLANTA}/${id}`).remove().then(()=>toast("Renglón borrado")); }
+  else db.ref(`${R}/entregas/${PLANTA}/${id}/items`).set(resto).then(()=>toast("Renglón borrado"));
+}
+
+/* =========================================================
+   DETALLE Y EXPORTACIÓN DE CUALQUIER VISTA
+   ========================================================= */
+function verDetalleN(i){ if (DET[i]) verDetalle(DET[i]); }
+function verDetalle(f){
+  const rows=[];
+  entregasOrden(PLANTA).forEach(e=>{
+    if (f.anio!==undefined && !enPeriodo(e,f.anio,f.mes||"todo")) return;
+    if (f.sector && e.sector!==f.sector) return; if (f.persona && e.persona!==f.persona) return; if (f.sinFirma && e.firmada) return;
+    e.items.forEach(it=>{ if (f.producto && it.producto!==f.producto) return; rows.push({e,it}); });
+  });
+  rows.reverse();
+  const tot = rows.reduce((a,r)=>a+n(r.it.cantidad),0);
+  $("md-titulo").textContent = f.titulo; $("md-cont").dataset.titulo = f.titulo;
+  $("md-cont").innerHTML = rows.length ? `<div class="small muted" style="margin-bottom:8px">${rows.length} renglones · ${tot} unidades</div>
+    <div class="tscroll"><table class="tbl"><tr><th>Fecha</th><th>Operario</th><th>Sector</th><th>Elemento</th><th>Talle</th><th class="num">Cant.</th><th>Firma</th></tr>
+    ${rows.map(r=>`<tr><td class="mono small">${fFecha(r.e.fecha)}</td><td>${esc(r.e.nombre)}</td><td class="small">${esc(r.e.sector)}</td><td>${emojiDe(r.it.producto)} ${esc(r.it.producto)}</td><td>${esc(r.it.talle||"")}</td><td class="num">${esc(r.it.cantidad)}</td><td>${r.e.firmada?"✓":'<span class="badge b-red">pendiente</span>'}</td></tr>`).join("")}
+    </table></div>` : `<div class="empty">Sin entregas para este filtro.</div>`;
+  $("m-detalle").classList.add("show");
+}
+function exportar(id, compartir){
+  const el = $(id); if (!el) return;
+  const titulo = el.dataset.titulo || "Reporte EPP";
+  const html = docVista(el, titulo);
+  if (compartir) compartirHTML(html, nombreArchivo(titulo+" "+PLANTAS[PLANTA].corto)); else imprimirHTML(html);
+}
+function docVista(el, titulo){
+  const clon = el.cloneNode(true);
+  const oc = el.querySelectorAll("canvas"), cc = clon.querySelectorAll("canvas");
+  oc.forEach((c,i)=>{ const img=document.createElement("img"); try { img.src=c.toDataURL("image/png"); } catch(e){} img.style.cssText="width:100%;height:auto;display:block"; cc[i].parentNode.style.height="auto"; cc[i].replaceWith(img); });
+  clon.querySelectorAll(".noexp,button,select,input,textarea").forEach(x=>x.remove());
+  clon.querySelectorAll("[onclick]").forEach(x=>{ x.removeAttribute("onclick"); x.style.cursor="default"; });
+  const css = document.querySelector("style").textContent;
+  const acc = PLANTA==="aceitera" ? ["#4f7d1c","#eaf3dc"] : ["#b36f0f","#fbefdc"];
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(titulo)}</title><style>${css}
+  body,body[data-planta]{--bg:#fff;--panel:#fff;--panel-2:#f4f5f6;--line:#d9dde0;--text:#15202b;--muted:#5f6b74;--acc:${acc[0]};--acc-dim:${acc[1]};--green:#2e8b6a;--green-dim:#e3f3ec;--red:#c0392b;--red-dim:#fbe7e4;background:#fff;color:#15202b;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .wrap{max-width:1000px;padding:18px}.card,.kpi,.elem,.li,tr{break-inside:avoid}.op:hover{background:none;border-color:transparent}
+  @page{size:A4;margin:10mm}</style></head><body data-planta="${PLANTA}"><div class="wrap">
+  <div style="border-bottom:3px solid var(--acc);padding-bottom:8px;margin-bottom:16px">
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">${esc(CONFIG.razonSocial)} · ${esc(PLANTAS[PLANTA].nombre)}</div>
+    <div style="font-size:20px;font-weight:700;margin-top:3px">${esc(titulo)}</div>
+    <div style="font-size:12px;color:var(--muted)">Generado el ${fFechaHora(Date.now())}</div></div>
+  ${clon.innerHTML}</div></body></html>`;
+}
+
+/* =========================================================
+   STOCK (compartido entre plantas)
+   ========================================================= */
+function stockActual(){
+  const s = {};
+  Object.values(STOCKMOV).forEach(m=>{ const k=m.catId+"|"+(m.talle||""); s[k]=(s[k]||0)+n(m.cantidad); });
+  Object.keys(PLANTAS).forEach(p=>Object.values(D[p].entregas).forEach(e=>e.items.forEach(it=>{
+    const c = CATALOGO[it.catId]; if (!c || !c.stock || (c.stockDesde && e.ts < c.stockDesde)) return;
+    const k = it.catId+"|"+(it.talle||""); s[k]=(s[k]||0)-n(it.cantidad); })));
+  return s;
+}
+function renderStock(){
+  const st = stockActual(), cats = catOrden(false).filter(([,c])=>c.stock);
+  const cls = (q,min) => q<=0 ? "b-red" : (min && q<=min ? "b-warn" : "b-ok");
+  const cards = cats.map(([k,c])=>{ const tl=tallesDe(c), min=n(c.minimo); const tot=(tl.length?tl:[""]).reduce((a,t)=>a+(st[k+"|"+t]||0),0);
+    return `<div class="card" style="margin:0"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:26px">${c.emoji||"📦"}</span>
+      <div style="flex:1"><div style="font-weight:600">${esc(c.producto)}</div><div class="small muted">${min?`Mínimo ${min}${tl.length?" por talle":""}`:"Sin mínimo"}</div></div>
+      <div class="mono" style="font-size:26px;font-weight:700;color:${tot<=0?"var(--red)":"var(--text)"}">${tot}</div></div>
+      ${tl.length ? `<div class="chips" style="margin-top:10px;gap:6px">${tl.map(t=>{ const q=st[k+"|"+t]||0; return `<span class="badge ${cls(q,min)}" style="font-size:12px">${esc(t)}: ${q}</span>`; }).join("")}</div>`
+                  : `<div style="margin-top:10px"><span class="badge ${cls(tot,min)}">${tot<=0?"Sin stock":(min&&tot<=min?"Stock bajo":"OK")}</span></div>`}</div>`; }).join("");
+  const movs = [];
+  Object.entries(STOCKMOV).forEach(([id,m])=>movs.push({ id, fecha:m.fecha, ts:m.ts, tipo:m.tipo, prod:m.producto, talle:m.talle, cant:n(m.cantidad),
+    det:[m.remito?"Remito Nº "+m.remito:"", m.factura?"Factura Nº "+m.factura:"", m.obs].filter(Boolean).join(" · ") }));
+  Object.keys(PLANTAS).forEach(p=>Object.values(D[p].entregas).forEach(e=>e.items.forEach(it=>{ const c=CATALOGO[it.catId];
+    if (!c || !c.stock || (c.stockDesde && e.ts<c.stockDesde)) return;
+    movs.push({ fecha:e.fecha, ts:e.ts, tipo:"entrega", prod:it.producto, talle:it.talle, cant:-n(it.cantidad), det:`${e.nombre} · ${PLANTAS[p].corto}` }); })));
+  const lista = movs.filter(m=>enPerFecha(m.fecha,ST_ANIO,ST_MES)).sort((a,b)=>b.fecha.localeCompare(a.fecha)||b.ts-a.ts);
+  const ing = lista.filter(m=>m.tipo==="ingreso").reduce((a,m)=>a+m.cant,0), egr = -lista.filter(m=>m.tipo==="entrega").reduce((a,m)=>a+m.cant,0);
+  const TIP = { ingreso:["b-ok","Ingreso"], ajuste:["b-warn","Ajuste"], entrega:["b-red","Entrega"] };
+  $("v-stock").innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+      <button class="primary" onclick="abrirFormStock('ingreso')">＋ Ingreso (compra)</button><button onclick="abrirFormStock('ajuste')">⚖️ Ajuste por conteo</button>
+      <span style="flex:1"></span><button onclick="exportar('st-cont',false)">🖨️ Imprimir</button><button onclick="exportar('st-cont',true)">📤 Compartir</button></div>
+    ${formStock()}
+    <div id="st-cont" data-titulo="Stock de EPP ${textoPeriodo(ST_ANIO,ST_MES)}">
+      <p class="small muted" style="margin:0 0 10px">Stock compartido entre Balanceados y Aceitera · al ${fFecha(hoy())}</p>
+      ${cats.length ? `<div class="two" style="margin-bottom:14px">${cards}</div>` : `<div class="card"><div class="empty"><span class="em">📦</span>No hay elementos con control de stock. Activalo en Configuración → Listado de EPP.</div></div>`}
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px"><h3 style="margin:0">Movimientos ${textoPeriodo(ST_ANIO,ST_MES)}</h3>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${selPeriodo("ST_ANIO","ST_MES",ST_ANIO,ST_MES,"renderStock")}</div></div>
+        <div class="small muted" style="margin-bottom:8px">Ingresos: ${ing} · Entregados: ${egr}</div>
+        ${lista.length ? `<div class="tscroll"><table class="tbl"><tr><th>Fecha</th><th>Tipo</th><th>Elemento</th><th>Talle</th><th class="num">Cant.</th><th>Detalle</th><th></th></tr>
+          ${lista.map(m=>`<tr><td class="mono small">${fFecha(m.fecha)}</td><td><span class="badge ${TIP[m.tipo][0]}">${TIP[m.tipo][1]}</span></td><td>${emojiDe(m.prod)} ${esc(m.prod)}</td><td>${esc(m.talle||"")}</td>
+            <td class="num" style="color:${m.cant<0?"var(--red)":"var(--green)"}">${m.cant>0?"+":""}${m.cant}</td><td class="small">${esc(m.det)}</td>
+            <td>${m.id?`<button class="sm danger" onclick="borrarMov('${m.id}')">🗑</button>`:""}</td></tr>`).join("")}</table></div>`
+          : `<div class="empty">Sin movimientos en este período.</div>`}
+      </div>
+    </div>`;
+}
+function abrirFormStock(tipo){ const c=catOrden(false).find(([,c])=>c.stock); ST_FORM=tipo; ST_F={ cat:c?c[0]:"", talle:"", cant:"", fecha:hoy(), remito:"", factura:"", obs:"" }; renderStock(); }
+function formStock(){
+  if (!ST_FORM) return "";
+  const cats = catOrden(false).filter(([,c])=>c.stock), c = CATALOGO[ST_F.cat], tl = tallesDe(c), st = stockActual();
+  const act = st[ST_F.cat+"|"+(ST_F.talle||"")]||0, aj = ST_FORM==="ajuste";
+  const f = (k,l,t="text",ph="") => `<div><label>${l}</label><input type="${t}" value="${esc(ST_F[k])}" placeholder="${ph}" oninput="ST_F.${k}=this.value"></div>`;
+  return `<div class="card" style="border-color:var(--acc)"><h3>${aj?"Ajuste por conteo físico":"Ingreso de mercadería"}</h3>
+    <div class="row">
+      <div><label>Elemento</label><select onchange="ST_F.cat=this.value;ST_F.talle='';renderStock()">${cats.map(([k,x])=>`<option value="${k}" ${k===ST_F.cat?"selected":""}>${x.emoji||"📦"} ${esc(x.producto)}</option>`).join("")}</select></div>
+      ${tl.length?`<div><label>Talle</label><select onchange="ST_F.talle=this.value;renderStock()"><option value="">Elegir…</option>${tl.map(t=>`<option ${t===ST_F.talle?"selected":""}>${esc(t)}</option>`).join("")}</select></div>`:""}
+      ${f("cant", aj?`Cantidad contada (hoy hay ${act})`:"Cantidad","number")}
+      ${f("fecha","Fecha","date")}
+    </div>
+    <div class="row" style="margin-top:8px">${aj?"":f("remito","Remito Nº")+f("factura","Factura Nº")}${f("obs", aj?"Motivo":"Observación")}</div>
+    <div style="margin-top:12px;display:flex;gap:8px"><button class="primary" onclick="guardarMov()">Guardar</button><button onclick="ST_FORM=null;renderStock()">Cancelar</button></div></div>`;
+}
+async function guardarMov(){
+  const c = CATALOGO[ST_F.cat]; if (!c) return toast("Elegí el elemento", true);
+  if (tallesDe(c).length && !ST_F.talle) return toast("Elegí el talle", true);
+  const act = stockActual()[ST_F.cat+"|"+(ST_F.talle||"")]||0; let cant;
+  if (ST_FORM==="ingreso"){ cant = n(ST_F.cant); if (cant<=0) return toast("Ingresá la cantidad", true); }
+  else { if (ST_F.cant==="" || ST_F.cant==null) return toast("Ingresá la cantidad contada", true); cant = n(ST_F.cant)-act; if (!cant){ ST_FORM=null; toast("El stock ya coincide"); return renderStock(); } }
+  await db.ref(R+"/stock").push({ tipo:ST_FORM, catId:ST_F.cat, producto:c.producto, talle:ST_F.talle||"", cantidad:cant, fecha:ST_F.fecha||hoy(), ts:Date.now(),
+    remito:(ST_F.remito||"").trim(), factura:(ST_F.factura||"").trim(), obs:(ST_F.obs||"").trim() });
+  toast(ST_FORM==="ingreso"?"Ingreso registrado":"Stock ajustado"); ST_FORM=null; renderStock();
+}
+function borrarMov(id){ const m=STOCKMOV[id]; if(!m) return; if(!confirm(`¿Borrar el movimiento de ${m.cantidad} ${m.producto}${m.talle?" T "+m.talle:""} del ${fFecha(m.fecha)}?`)) return; db.ref(`${R}/stock/${id}`).remove().then(()=>toast("Movimiento borrado")); }
+
+/* =========================================================
+   PEDIDOS DE ROPA
+   ========================================================= */
+function kitPara(p, sector){
+  const ks = ordenar(D[p].kits), s = norm(sector);
+  const m = ks.find(([,k])=>String(k.sectores||"").split(",").map(norm).filter(Boolean).includes(s));
+  return (m || ks.find(([,k])=>!String(k.sectores||"").trim()) || ks[0] || [null])[0];
+}
+function itemsKit(p, kitId, temp){ const k=D[p].kits[kitId]; if(!k) return []; return ordenar(k.items).filter(([,it])=>it.temporada==="ambas"||it.temporada===temp); }
+function talleList(a){ return String((a&&a.talles)||"").split(",").map(t=>t.trim()).filter(Boolean); }
+function resumenResp(r){ return (r.items||[]).map(i=>`${n(i.cantidad)>1?i.cantidad+" ":""}${i.alt}${i.talle?" "+i.talle:""}`).join(" · "); }
+
+function initForm(p, pid, key, admin){
+  const per = personas(p)[key], ped = D[p].pedidos[pid], prev = (ped.resp||{})[key];
+  const F = { p, pid, key, admin, nombre:per?per.nombre:(prev&&prev.nombre)||"", sector:per?per.puesto:(prev&&prev.sector)||"",
+              kitId:(prev&&prev.kitId&&D[p].kits[prev.kitId])?prev.kitId:kitPara(p, per&&per.sector), sel:{}, obs:(prev&&prev.obs)||"" };
+  const hist = Object.entries(D[p].pedidos).filter(([id])=>id!==pid).map(([,x])=>(x.resp||{})[key]).filter(Boolean).sort((a,b)=>b.ts-a.ts);
+  itemsKit(p, F.kitId, ped.temporada).forEach(([iid,it])=>{
+    const alts = Object.entries(it.alts||{});
+    const ex = prev && (prev.items||[]).find(x=>x.itemId===iid);
+    if (ex){ const a=alts.find(([,x])=>x.nombre===ex.alt); F.sel[iid]={ alt:a?a[0]:null, talle:ex.talle||"", obs:ex.obs||"" }; return; }
+    const s = { alt: alts.length===1 ? alts[0][0] : null, talle:"", obs:"" };
+    for (const r of hist){ const x=(r.items||[]).find(x=>alts.some(([,a])=>a.nombre===x.alt)); if (x){ const a=alts.find(([,a])=>a.nombre===x.alt); s.alt=a[0]; if (talleList(a[1]).includes(x.talle)) s.talle=x.talle; break; } }
+    F.sel[iid] = s;
+  });
+  return F;
+}
+function htmlForm(F){
+  const p = F.p, ped = D[p].pedidos[F.pid]; let h = "";
+  if (F.admin) h += `<div style="margin-bottom:12px"><label>Kit</label><select onchange="FORM.kitId=this.value;FORM.sel={};rerenderForm()">${ordenar(D[p].kits).map(([id,k])=>`<option value="${id}" ${id===F.kitId?"selected":""}>${esc(k.nombre)}</option>`).join("")}</select></div>`;
+  const its = itemsKit(p, F.kitId, ped.temporada);
+  if (!its.length) h += `<div class="empty">Este kit no tiene prendas para ${ped.temporada}.</div>`;
+  its.forEach(([iid,it])=>{
+    const s = F.sel[iid] || (F.sel[iid]={alt:null,talle:"",obs:""}); const alts = Object.entries(it.alts||{}); const a = s.alt && it.alts[s.alt];
+    h += `<div class="card" style="padding:14px"><div style="font-weight:600;margin-bottom:8px">${emojiPrenda(alts[0]?alts[0][1].nombre:it.titulo)} ${esc(it.titulo)}</div>`;
+    if (alts.length>1) h += `<div class="chips" style="margin-bottom:10px">${alts.map(([aid,x])=>`<span class="chip ${s.alt===aid?"on":""}" onclick="selAlt('${iid}','${aid}')">${n(x.cantidad)>1?x.cantidad+" ":""}${esc(x.nombre)}${x.color?" "+esc(x.color):""}</span>`).join("")}</div>`;
+    else if (a) h += `<div class="small muted" style="margin-bottom:8px">${n(a.cantidad)>1?a.cantidad+" ":""}${esc(a.nombre)}${a.color?" · "+esc(a.color):""}</div>`;
+    if (a){ const tl=talleList(a); if (tl.length) h += `<label>Talle</label><div class="chips">${tl.map(t=>`<span class="chip ${s.talle===t?"on":""}" style="padding:7px 13px" onclick="selTalle('${iid}','${esc(t)}')">${esc(t)}</span>`).join("")}</div>`; }
+    else if (alts.length>1) h += `<div class="small muted">Elegí una opción.</div>`;
+    h += `<input style="margin-top:10px" placeholder="Observación (opcional)" value="${esc(s.obs)}" oninput="FORM.sel['${iid}'].obs=this.value"></div>`;
+  });
+  h += `<div class="card"><label>Observación general (opcional)</label><textarea rows="2" oninput="FORM.obs=this.value">${esc(F.obs)}</textarea></div>`;
+  h += `<button class="primary" style="width:100%;padding:14px;font-size:16px" onclick="guardarForm()">${F.admin?"Guardar":"Enviar pedido"}</button>`;
+  return h;
+}
+function selAlt(iid, aid){ FORM.sel[iid].alt=aid; FORM.sel[iid].talle=""; rerenderForm(); }
+function selTalle(iid, t){ FORM.sel[iid].talle=t; rerenderForm(); }
+function rerenderForm(){ const el = FORM.admin ? $("mp-cont") : $("op-form"); if (el) el.innerHTML = htmlForm(FORM); }
+async function guardarForm(){
+  const F = FORM, p = F.p, ped = D[p].pedidos[F.pid]; if (!ped) return;
+  if (!F.admin && !ped.abierto) return toast("El pedido ya está cerrado", true);
+  const items = [];
+  for (const [iid,it] of itemsKit(p, F.kitId, ped.temporada)){
+    const s = F.sel[iid]||{}, a = s.alt && it.alts[s.alt];
+    if (!a) return toast(`Elegí una opción en “${it.titulo}”`, true);
+    if (talleList(a).length && !s.talle) return toast(`Elegí el talle de ${a.nombre}`, true);
+    items.push({ itemId:iid, titulo:it.titulo, alt:a.nombre, cantidad:n(a.cantidad)||1, color:a.color||"", talle:s.talle||"", obs:(s.obs||"").trim() });
+  }
+  const prev = (ped.resp||{})[F.key];
+  const estado = F.admin ? (prev ? prev.estado : "aprobado") : "pendiente";
+  try {
+    await db.ref(`${R}/pedidos/${p}/${F.pid}/resp/${F.key}`).set({ nombre:F.nombre, sector:F.sector||"", kitId:F.kitId, items, obs:(F.obs||"").trim(), estado, ts:Date.now(), entregado:!!(prev&&prev.entregado), porAdmin:!!F.admin });
+    if (F.admin){ cerrarModalPedido(); toast("Guardado"); } else { toast("¡Pedido enviado!"); OP_EDIT=false; renderOperarioPedido(); window.scrollTo(0,0); }
+  } catch(e){ toast("No se pudo enviar. Revisá la conexión.", true); }
+}
+function abrirFormAdmin(pid, key){
+  FORM = initForm(PLANTA, pid, key, true);
+  $("mp-titulo").textContent = FORM.nombre + " · " + D[PLANTA].pedidos[pid].nombre;
+  $("m-pedido").classList.add("show"); rerenderForm();
+}
+function cerrarModalPedido(){ $("m-pedido").classList.remove("show"); FORM=null; }
+
+function renderPedidos(){
+  const p = PLANTA, el = $("v-pedidos");
+  if (PED_SEL==="__kits") return renderKits();
+  if (PED_SEL && D[p].pedidos[PED_SEL]) return renderPedidoDet();
+  PED_SEL = null;
+  const peds = Object.entries(D[p].pedidos).sort((a,b)=>b[1].ts-a[1].ts);
+  el.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"><button class="primary" onclick="PED_NUEVO=!PED_NUEVO;renderPedidos()">＋ Nuevo pedido</button><button onclick="PED_SEL='__kits';renderPedidos()">✏️ Kits y especificaciones</button></div>
+    ${PED_NUEVO?`<div class="card" style="border-color:var(--acc)"><h3>Nuevo pedido · ${PLANTAS[p].corto}</h3>
+      <div class="row"><div><label>Nombre</label><input id="pn-nom" placeholder="Invierno ${ANIO_ACT+1}"></div><div><label>Temporada</label><select id="pn-temp"><option value="invierno">❄️ Invierno</option><option value="verano">☀️ Verano</option></select></div></div>
+      <div class="row" style="margin-top:8px"><div><label>Desde</label><input type="date" id="pn-desde" value="${hoy()}"></div><div><label>Hasta</label><input type="date" id="pn-hasta"></div></div>
+      <div style="margin-top:12px;display:flex;gap:8px"><button class="primary" onclick="crearPedido()">Crear y abrir</button><button onclick="PED_NUEVO=false;renderPedidos()">Cancelar</button></div></div>`:""}
+    ${peds.length ? peds.map(([id,x])=>{ const rs=Object.values(x.resp||{}); const ap=rs.filter(r=>r.estado==="aprobado").length, pe=rs.length-ap;
+      return `<div class="card" style="cursor:pointer" onclick="PED_SEL='${id}';renderPedidos()"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div><div style="font-weight:700;font-size:16px">${x.temporada==="verano"?"☀️":"❄️"} ${esc(x.nombre)}</div><div class="small muted">${fFecha(x.desde)}${x.hasta?" al "+fFecha(x.hasta):""}</div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="badge ${x.abierto?"b-ok":"b-red"}">${x.abierto?"Abierto":"Cerrado"}</span>${pe?`<span class="badge b-warn">${pe} por aprobar</span>`:""}<span class="badge b-ok">${ap} aprobados</span></div></div></div>`; }).join("")
+      : `<div class="card"><div class="empty"><span class="em">👕</span>Todavía no hay pedidos en ${PLANTAS[p].corto}. Creá el primero.</div></div>`}`;
+}
+async function crearPedido(){
+  const nombre = $("pn-nom").value.trim() || $("pn-nom").placeholder;
+  const ref = db.ref(`${R}/pedidos/${PLANTA}`).push();
+  await ref.set({ nombre, temporada:$("pn-temp").value, desde:$("pn-desde").value||hoy(), hasta:$("pn-hasta").value||"", abierto:true, ts:Date.now(), obsGeneral:"" });
+  PED_NUEVO=false; PED_SEL=ref.key; toast("Pedido creado y abierto");
+}
+function setPed(campo, v){ db.ref(`${R}/pedidos/${PLANTA}/${PED_SEL}/${campo}`).set(v).then(()=>toast("Guardado")); }
+function setResp(k, campo, v){ db.ref(`${R}/pedidos/${PLANTA}/${PED_SEL}/resp/${k}/${campo}`).set(v).then(()=>toast("Listo")); }
+function eliminarResp(k){ const r=D[PLANTA].pedidos[PED_SEL].resp[k]; if(!confirm(`¿Eliminar el pedido de ${r.nombre}?`)) return; db.ref(`${R}/pedidos/${PLANTA}/${PED_SEL}/resp/${k}`).remove().then(()=>toast("Eliminado")); }
+function eliminarPedido(){ const x=D[PLANTA].pedidos[PED_SEL]; if(!confirm(`¿Eliminar el pedido "${x.nombre}" completo, con todas las respuestas?`)) return; const id=PED_SEL; PED_SEL=null; db.ref(`${R}/pedidos/${PLANTA}/${id}`).remove().then(()=>toast("Pedido eliminado")); }
+function linkPedido(){ return location.origin + location.pathname + "?pedido=" + PLANTA; }
+function copiarLink(){ const l=linkPedido(); (navigator.clipboard ? navigator.clipboard.writeText(l) : Promise.reject()).then(()=>toast("Link copiado")).catch(()=>prompt("Copiá el link:", l)); }
+function waLink(){ const x=D[PLANTA].pedidos[PED_SEL]; window.open("https://wa.me/?text="+encodeURIComponent(`Completá tu pedido de ropa de trabajo (${x.nombre}). Entrá con tu apellido y los 4 últimos números de tu DNI: ${linkPedido()}`), "_blank"); }
+
+function renderPedidoDet(){
+  const p = PLANTA, id = PED_SEL, x = D[p].pedidos[id], resp = x.resp||{};
+  const activos = Object.values(personas(p)).filter(o=>!o.inactivo);
+  const ord = (a,b)=>(a[1].sector||"").localeCompare(b[1].sector||"")||(a[1].nombre||"").localeCompare(b[1].nombre||"");
+  const pend = Object.entries(resp).filter(([,r])=>r.estado!=="aprobado").sort(ord), apr = Object.entries(resp).filter(([,r])=>r.estado==="aprobado").sort(ord);
+  const faltan = activos.filter(o=>!resp[o.key]).sort((a,b)=>(a.puesto||"").localeCompare(b.puesto||"")||a.nombre.localeCompare(b.nombre));
+  const fila = (r, bot) => `<div class="li" style="align-items:flex-start;flex-wrap:wrap"><div style="flex:1;min-width:200px"><b>${esc(r.nombre)}</b> <span class="s">· ${esc(r.sector)}</span>
+      <div class="small" style="margin-top:3px">${esc(resumenResp(r))}</div>${(r.items||[]).filter(i=>i.obs).map(i=>`<div class="small muted">${esc(i.alt)}: ${esc(i.obs)}</div>`).join("")}${r.obs?`<div class="small muted">Obs.: ${esc(r.obs)}</div>`:""}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${bot}</div></div>`;
+  $("v-pedidos").innerHTML = `
+    <button class="back" onclick="PED_SEL=null;renderPedidos()">← Pedidos</button>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div><div style="font-weight:700;font-size:18px">${x.temporada==="verano"?"☀️":"❄️"} ${esc(x.nombre)}</div><div class="small muted">${PLANTAS[p].nombre}</div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="badge ${x.abierto?"b-ok":"b-red"}">${x.abierto?"Abierto":"Cerrado"}</span>
+          <button class="sm" onclick="setPed('abierto',${!x.abierto})">${x.abierto?"🔒 Cerrar":"🔓 Abrir"}</button><button class="sm danger" onclick="eliminarPedido()">Eliminar</button></div>
+      </div>
+      <div class="row" style="margin-top:12px"><div><label>Desde</label><input type="date" value="${x.desde||""}" onchange="setPed('desde',this.value)"></div><div><label>Hasta</label><input type="date" value="${x.hasta||""}" onchange="setPed('hasta',this.value)"></div></div>
+    </div>
+    <div class="card"><h3>Link para los operarios</h3>
+      <div class="mono small" style="word-break:break-all;background:var(--panel-2);padding:9px;border-radius:7px">${esc(linkPedido())}</div>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button onclick="copiarLink()">📋 Copiar</button><button onclick="waLink()">💬 Enviar por WhatsApp</button></div></div>
+    <div class="kpis">
+      <div class="kpi"><div class="l">Por aprobar</div><div class="v ${pend.length?"acc":""}">${pend.length}</div></div>
+      <div class="kpi"><div class="l">Aprobados</div><div class="v">${apr.length}</div></div>
+      <div class="kpi"><div class="l">Faltan completar</div><div class="v">${faltan.length}</div></div>
+      <div class="kpi"><div class="l">Entregados</div><div class="v">${apr.filter(([,r])=>r.entregado).length}</div></div>
+    </div>
+    <div class="card"><h3>Observaciones generales del pedido</h3><textarea rows="2" placeholder="Ej: entrega antes del 30/04" onchange="setPed('obsGeneral',this.value.trim())">${esc(x.obsGeneral||"")}</textarea>
+      <div class="small muted" style="margin-top:6px">Salen en el listado al proveedor junto con las especificaciones de la planta.</div></div>
+    <div class="card"><h3>Por aprobar · ${pend.length}</h3>${pend.length ? pend.map(([k,r])=>fila(r,`<button class="sm primary" onclick="setResp('${k}','estado','aprobado')">Aprobar</button><button class="sm" onclick="abrirFormAdmin('${id}','${k}')">Modificar</button><button class="sm danger" onclick="eliminarResp('${k}')">Eliminar</button>`)).join("") : `<div class="small muted">No hay pedidos pendientes.</div>`}</div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px"><h3 style="margin:0">Aprobados · ${apr.length}</h3>
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><button onclick="imprimirHTML(docProveedor('${id}'))">🖨️ Listado al proveedor</button><button onclick="compartirHTML(docProveedor('${id}'),nombreArchivo('Pedido ${x.nombre} ${PLANTAS[p].corto}'))">📤 Compartir</button></div></div>
+      ${apr.length ? apr.map(([k,r])=>fila(r,`${r.entregado?'<span class="badge b-ok">Entregado ✓</span>':`<button class="sm primary" onclick="entregarPedido('${k}')">✍️ Entregar</button>`}<button class="sm" onclick="abrirFormAdmin('${id}','${k}')">Modificar</button>${r.entregado?"":`<button class="sm" onclick="setResp('${k}','estado','pendiente')">Desaprobar</button>`}`)).join("") : `<div class="small muted">Todavía no aprobaste ninguno.</div>`}
+    </div>
+    <div class="card"><h3>Faltan completar · ${faltan.length}</h3>${faltan.length ? faltan.map(o=>`<div class="li"><span>${esc(o.nombre)} <span class="s">· ${esc(o.puesto)}</span></span><button class="sm" onclick="abrirFormAdmin('${id}','${o.key}')">Cargar</button></div>`).join("") : `<div class="small muted">Completaron todos.</div>`}</div>`;
+}
+function docProveedor(pid){
+  const p = PLANTA, x = D[p].pedidos[pid], esp = (PCFG[p]||{}).especif || "";
+  const apr = Object.values(x.resp||{}).filter(r=>r.estado==="aprobado").sort((a,b)=>(a.sector||"").localeCompare(b.sector||"")||a.nombre.localeCompare(b.nombre));
+  const tot = {}; apr.forEach(r=>(r.items||[]).forEach(i=>{ const k=`${i.alt}|${i.color}|${i.talle}`; tot[k]=(tot[k]||0)+n(i.cantidad); }));
+  const acc = p==="aceitera" ? "#4f7d1c" : "#b36f0f";
+  const br = s => esc(s).replace(/\n/g,"<br>");
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Pedido ${esc(x.nombre)} · ${esc(PLANTAS[p].corto)}</title><style>
+  @page{size:A4;margin:10mm} *{box-sizing:border-box}
+  body{font-family:Arial,Helvetica,sans-serif;color:#15202b;font-size:11px;max-width:900px;margin:16px auto;padding:0 12px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .hd{border-bottom:3px solid ${acc};padding-bottom:8px;margin-bottom:12px}.hd .s{font-size:10px;color:#5f6b74;text-transform:uppercase;letter-spacing:1px}.hd h1{font-size:19px;margin:3px 0}
+  .box{border:1px solid #d9dde0;border-left:4px solid ${acc};border-radius:6px;padding:8px 10px;margin-bottom:8px;background:#fafafa}.box b{display:block;font-size:10px;color:#5f6b74;text-transform:uppercase;margin-bottom:3px}
+  .per{border:1px solid #c9ced2;border-radius:6px;margin:10px 0;break-inside:avoid;overflow:hidden}
+  .ph{display:flex;justify-content:space-between;background:#f1f3f4;padding:6px 10px;font-size:12px}.ph span{color:#5f6b74}
+  table{width:100%;border-collapse:collapse}th,td{border-top:1px solid #e2e5e7;padding:5px 8px;text-align:left}th{font-size:10px;color:#5f6b74;font-weight:normal;text-transform:uppercase}
+  td.c{text-align:center}.obs{border-top:1px solid #e2e5e7;padding:6px 10px;min-height:22px}.obs i{color:#5f6b74;font-style:normal}
+  h2{font-size:13px;border-bottom:2px solid ${acc};padding-bottom:3px;margin-top:18px}.tt td,.tt th{border:1px solid #d9dde0}
+  </style></head><body>
+  <div class="hd"><div class="s">${esc(CONFIG.razonSocial)} · ${esc(PLANTAS[p].nombre)}</div><h1>Pedido de ropa de trabajo · ${esc(x.nombre)}</h1><div style="color:#5f6b74">${apr.length} personas · generado el ${fFechaHora(Date.now())}</div></div>
+  ${esp?`<div class="box"><b>Especificaciones</b>${br(esp)}</div>`:""}
+  <div class="box"><b>Observaciones generales</b>${x.obsGeneral?br(x.obsGeneral):"&nbsp;"}</div>
+  ${apr.map((r,i)=>`<div class="per"><div class="ph"><b>${i+1}. ${esc(r.nombre)}</b><span>${esc(r.sector)}</span></div>
+    <table><tr><th style="width:30%">Prenda</th><th style="width:14%">Color</th><th style="width:8%" class="c">Cant.</th><th style="width:10%" class="c">Talle</th><th>Observaciones</th></tr>
+    ${(r.items||[]).map(it=>`<tr><td>${esc(it.alt)}</td><td>${esc(it.color)}</td><td class="c">${esc(it.cantidad)}</td><td class="c"><b>${esc(it.talle)}</b></td><td>${esc(it.obs||"")}</td></tr>`).join("")}</table>
+    <div class="obs"><i>Observaciones:</i> ${esc(r.obs||"")}</div></div>`).join("")}
+  <h2>Totales por prenda y talle (control)</h2>
+  <table class="tt"><tr><th>Prenda</th><th>Color</th><th class="c">Talle</th><th class="c">Cantidad</th></tr>
+  ${Object.entries(tot).sort((a,b)=>a[0].localeCompare(b[0],"es",{numeric:true})).map(([k,q])=>{ const [a,c,t]=k.split("|"); return `<tr><td>${esc(a)}</td><td>${esc(c)}</td><td class="c">${esc(t)}</td><td class="c"><b>${q}</b></td></tr>`; }).join("")}</table>
+  </body></html>`;
+}
+async function entregarPedido(k){
+  const p = PLANTA, pid = PED_SEL, r = D[p].pedidos[pid].resp[k];
+  if (!personas(p)[k]) return toast("El operario ya no figura en la lista", true);
+  const items = [];
+  for (const i of r.items||[]){
+    const ex = Object.entries(CATALOGO).find(([,c])=>norm(c.producto)===norm(i.alt)); let catId;
+    if (ex) catId = ex[0];
+    else { const kit=D[p].kits[r.kitId], it=kit&&kit.items&&kit.items[i.itemId], alt=it&&Object.values(it.alts||{}).find(a=>a.nombre===i.alt);
+      const ref = db.ref(R+"/catalogo").push(); catId = ref.key;
+      const c = { producto:i.alt, tipo:i.color||"", marca:"", cert:"no", emoji:emojiPrenda(i.alt), orden:50, activo:true, talles:(alt&&alt.talles)||"" };
+      CATALOGO[catId] = c; await ref.set(c); }
+    items.push({ catId, talle:i.talle||"", cant:n(i.cantidad)||1 });
+  }
+  NE = { persona:k, items, pedidoRef:{ p, pid, key:k } }; setTab("nueva");
+  toast("Revisá la entrega y hacé firmar");
+}
+
+/* ---------- Editor de kits ---------- */
+function setK(path, campo, v){ db.ref(`${R}/kits/${PLANTA}/${path}/${campo}`).set(typeof v==="string"?v.trim():v).then(()=>toast("Guardado")); }
+function borrarK(path, que){ if(!confirm(`¿Eliminar ${que}?`)) return; db.ref(`${R}/kits/${PLANTA}/${path}`).remove().then(()=>toast("Eliminado")); }
+function addAlt(kid, iid){ db.ref(`${R}/kits/${PLANTA}/${kid}/items/${iid}/alts`).push({ nombre:"", cantidad:1, color:"", talles:T_ROPA }); }
+function addItem(kid){ const a={}; a[db.ref().push().key]={ nombre:"Nueva prenda", cantidad:1, color:"", talles:T_ROPA }; db.ref(`${R}/kits/${PLANTA}/${kid}/items`).push({ titulo:"Nueva prenda", temporada:"ambas", orden:99, alts:a }); }
+function addKit(){ db.ref(`${R}/kits/${PLANTA}`).push({ nombre:"Nuevo kit", sectores:"", orden:9 }); }
+function renderKits(){
+  const p = PLANTA, kits = ordenar(D[p].kits), esp = (PCFG[p]||{}).especif || "";
+  $("v-pedidos").innerHTML = `
+    <button class="back" onclick="PED_SEL=null;renderPedidos()">← Pedidos</button>
+    <div class="card"><h3>Especificaciones de ${PLANTAS[p].corto}</h3>
+      <textarea rows="3" onchange="db.ref('${R}/pedidosCfg/${p}/especif').set(this.value.trim()).then(()=>toast('Guardado'))">${esc(esp)}</textarea>
+      <div class="small muted" style="margin-top:6px">Colores, logo, bordado… Salen en el encabezado de cada listado al proveedor.</div></div>
+    ${kits.map(([kid,k])=>`<div class="card">
+      <div class="row" style="align-items:flex-end">
+        <div><label>Nombre del kit</label><input value="${esc(k.nombre)}" onchange="setK('${kid}','nombre',this.value)"></div>
+        <div style="flex:2"><label>Sectores que lo usan (separados por coma · vacío = todos los demás)</label><input value="${esc(k.sectores||"")}" list="dl-sectores" onchange="setK('${kid}','sectores',this.value)"></div>
+        <button class="sm danger" style="flex:0 0 auto" onclick="borrarK('${kid}','el kit ${esc(k.nombre)}')">Eliminar kit</button></div>
+      ${ordenar(k.items).map(([iid,it])=>{ const P=`${kid}/items/${iid}`; const alts=Object.entries(it.alts||{}); return `<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px">
+        <div class="row" style="align-items:flex-end">
+          <div style="flex:2"><label>Prenda / grupo</label><input value="${esc(it.titulo)}" onchange="setK('${P}','titulo',this.value)"></div>
+          <div><label>Temporada</label><select onchange="setK('${P}','temporada',this.value)">${[["ambas","Verano e invierno"],["verano","☀️ Verano"],["invierno","❄️ Invierno"]].map(([v,t])=>`<option value="${v}" ${it.temporada===v?"selected":""}>${t}</option>`).join("")}</select></div>
+          <div style="flex:0 0 70px;min-width:70px"><label>Orden</label><input type="number" value="${esc(it.orden??"")}" onchange="setK('${P}','orden',+this.value)"></div>
+          <button class="sm danger" style="flex:0 0 auto" onclick="borrarK('${P}','${esc(it.titulo)}')">Quitar</button></div>
+        <div class="small muted" style="margin:10px 0 5px">${alts.length>1?"Opciones para elegir (el operario elige una):":"Detalle:"} prenda · cantidad · color · talles</div>
+        ${alts.map(([aid,a])=>{ const A=`${P}/alts/${aid}`; return `<div class="row" style="margin-bottom:6px;align-items:center;gap:6px">
+          <div style="flex:2;min-width:110px"><input value="${esc(a.nombre)}" placeholder="Prenda" onchange="setK('${A}','nombre',this.value)"></div>
+          <div style="flex:0 0 62px;min-width:62px"><input type="number" min="1" value="${esc(a.cantidad)}" title="Cantidad" onchange="setK('${A}','cantidad',+this.value)"></div>
+          <div style="min-width:90px"><input value="${esc(a.color)}" placeholder="Color" onchange="setK('${A}','color',this.value)"></div>
+          <div style="flex:3;min-width:160px"><input value="${esc(a.talles)}" placeholder="Talles: S,M,L,XL" onchange="setK('${A}','talles',this.value)"></div>
+          <button class="sm danger" style="flex:0 0 auto" onclick="borrarK('${A}','la opción ${esc(a.nombre)}')">✕</button></div>`; }).join("")}
+        <button class="sm" onclick="addAlt('${kid}','${iid}')">＋ Opción</button></div>`; }).join("")}
+      <div style="margin-top:14px"><button class="sm primary" onclick="addItem('${kid}')">＋ Agregar prenda</button></div>
+    </div>`).join("")}
+    <button class="primary" onclick="addKit()">＋ Nuevo kit</button>
+    <p class="small muted">Talles de referencia: ropa S,M,L,XL,XXL,XXXL · pantalón 38 al 60 · calzado 35 al 46. Para que algo sea a elección (ej. botín o zapatilla), agregá varias opciones dentro de la misma prenda.</p>`;
+}
+
+/* ---------- Pantalla del operario (link ?pedido=planta) ---------- */
+function renderOperarioPedido(){
+  const p = PLANTAS[MODO_PEDIDO] ? MODO_PEDIDO : "balanceados", el = $("v-op");
+  if (!LISTO.he[p] || !LISTO.ped[p] || !LISTO.kits[p]){ el.innerHTML = `<div class="empty">Cargando…</div>`; return; }
+  let ses = null; try { ses = JSON.parse(localStorage.getItem("epp_op_"+p)||"null"); } catch(e){}
+  const per = ses && D[p].he[ses.id];
+  if (!per){
+    el.innerHTML = `<div class="card" style="max-width:380px;margin:20px auto">
+      <h3>Ingresá con tus datos</h3>
+      <label>Apellido</label><input id="lo-ap" autocomplete="off">
+      <label style="margin-top:10px">Código (últimos 4 números del DNI)</label><input id="lo-cod" inputmode="numeric" maxlength="4" onkeydown="if(event.key==='Enter')loginOp()">
+      <button class="primary" style="width:100%;margin-top:14px;padding:12px" onclick="loginOp()">Entrar</button></div>`;
+    return;
+  }
+  const key = "h_"+ses.id;
+  const cab = `<div class="card" style="display:flex;align-items:center;gap:12px">${avatar(per.apellidoNombre)}<div style="flex:1"><div style="font-weight:700">${esc(per.apellidoNombre)}</div><div class="small muted">${esc(per.sector)}</div></div><button class="sm" onclick="salirOp()">Salir</button></div>`;
+  const abiertos = Object.entries(D[p].pedidos).filter(([,x])=>x.abierto).sort((a,b)=>b[1].ts-a[1].ts);
+  if (!abiertos.length){ el.innerHTML = cab + `<div class="card"><div class="empty"><span class="em">👕</span>No hay ningún pedido de ropa abierto en este momento.</div></div>`; return; }
+  const [pid, ped] = abiertos[0], r = (ped.resp||{})[key];
+  const tit = `<div class="card"><div style="font-weight:700;font-size:17px">${ped.temporada==="verano"?"☀️":"❄️"} ${esc(ped.nombre)}</div><div class="small muted">${ped.hasta?"Completalo hasta el "+fFecha(ped.hasta):""}</div></div>`;
+  if (r && !OP_EDIT){
+    const ok = r.estado==="aprobado";
+    el.innerHTML = cab + tit + `<div class="card"><div style="margin-bottom:10px"><span class="badge ${ok?"b-ok":"b-warn"}" style="font-size:13px">${ok?"✓ Aprobado":"Enviado · esperando aprobación"}</span></div>
+      ${(r.items||[]).map(i=>`<div class="li"><span>${emojiPrenda(i.alt)} ${n(i.cantidad)>1?i.cantidad+" ":""}${esc(i.alt)}${i.color?" "+esc(i.color):""}${i.obs?`<div class="small muted">${esc(i.obs)}</div>`:""}</span><b class="mono">${esc(i.talle)}</b></div>`).join("")}
+      ${r.obs?`<div class="small muted" style="margin-top:8px">Obs.: ${esc(r.obs)}</div>`:""}
+      ${ok?"":`<button style="width:100%;margin-top:12px" onclick="OP_EDIT=true;FORM=null;renderOperarioPedido()">✏️ Modificar</button>`}</div>`;
+    return;
+  }
+  if (!FORM || FORM.pid!==pid || FORM.key!==key || FORM.admin) FORM = initForm(p, pid, key, false);
+  el.innerHTML = cab + tit + `<p class="small muted" style="margin:0 0 10px">Elegí tu talle en cada prenda y tocá “Enviar pedido”.</p><div id="op-form">${htmlForm(FORM)}</div>`;
+}
+function loginOp(){
+  const p = PLANTAS[MODO_PEDIDO] ? MODO_PEDIDO : "balanceados";
+  const ap = norm($("lo-ap").value), cod = $("lo-cod").value.trim();
+  if (ap.length<3 || cod.length!==4) return toast("Completá apellido y código", true);
+  const m = Object.entries(D[p].he).find(([,o])=>{ const nm=norm(o.apellidoNombre); return (nm===ap || nm.startsWith(ap+" ") || nm.split(/[\s,]+/).includes(ap)) && String(o.codigo)===cod; });
+  if (!m) return toast("Apellido o código incorrecto", true);
+  try { localStorage.setItem("epp_op_"+p, JSON.stringify({id:m[0]})); } catch(e){}
+  FORM = null; OP_EDIT = false; renderOperarioPedido();
+}
+function salirOp(){ const p = PLANTAS[MODO_PEDIDO] ? MODO_PEDIDO : "balanceados"; try { localStorage.removeItem("epp_op_"+p); } catch(e){} FORM=null; renderOperarioPedido(); }
+
 
 renderActual();
 </script>
